@@ -28,10 +28,14 @@ const connected = computed(() => state.value.status === 'connected')
 const stateName = computed(() => ({ connected: '已连接', connecting: '正在认证', offline: '未连接校园网', error: '认证失败', idle: '等待连接' }[state.value.status] ?? '等待连接'))
 
 onMounted(async () => {
-  const saved = await Settings()
-  form.value = { ...form.value, ...saved }
-  state.value = await State()
   stopEvents = EventsOn('state:changed', (next: NetworkState) => { state.value = next })
+  try {
+    const saved = await Settings()
+    form.value = { ...form.value, ...saved }
+    state.value = await State()
+  } catch (reason) {
+    error.value = `初始化失败：${String(reason).replace(/^Error:\s*/, '')}`
+  }
 })
 
 onUnmounted(() => stopEvents?.())

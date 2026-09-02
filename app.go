@@ -51,7 +51,8 @@ func (a *App) startup(ctx context.Context) {
 	} else {
 		log.Printf("load settings failed: %v", err)
 	}
-	a.refresh()
+	log.Printf("application startup callback completed")
+	go a.refresh()
 	go a.monitor()
 }
 
