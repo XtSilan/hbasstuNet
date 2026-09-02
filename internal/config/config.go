@@ -42,6 +42,11 @@ func Load(path string) (Settings, error) {
 	}
 	if !settings.Remember {
 		settings.Password = ""
+	} else if settings.Password != "" {
+		settings.Password, err = unprotect(settings.Password)
+		if err != nil {
+			return Settings{}, err
+		}
 	}
 	return settings, nil
 }
@@ -49,6 +54,12 @@ func Load(path string) (Settings, error) {
 func Save(path string, settings Settings) error {
 	if !settings.Remember {
 		settings.Password = ""
+	} else if settings.Password != "" {
+		protected, err := protect(settings.Password)
+		if err != nil {
+			return err
+		}
+		settings.Password = protected
 	}
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
