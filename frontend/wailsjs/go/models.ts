@@ -37,6 +37,7 @@ export namespace main {
 	    signal: string;
 	    account: string;
 	    lastChecked: string;
+	    networks: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new AppState(source);
@@ -53,6 +54,7 @@ export namespace main {
 	        this.signal = source["signal"];
 	        this.account = source["account"];
 	        this.lastChecked = source["lastChecked"];
+	        this.networks = source["networks"];
 	    }
 	}
 

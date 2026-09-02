@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,15 +27,16 @@ type App struct {
 }
 
 type AppState struct {
-	Status      string `json:"status"`
-	Message     string `json:"message"`
-	SSID        string `json:"ssid"`
-	Interface   string `json:"interface"`
-	IP          string `json:"ip"`
-	MAC         string `json:"mac"`
-	Signal      string `json:"signal"`
-	Account     string `json:"account"`
-	LastChecked string `json:"lastChecked"`
+	Status      string   `json:"status"`
+	Message     string   `json:"message"`
+	SSID        string   `json:"ssid"`
+	Interface   string   `json:"interface"`
+	IP          string   `json:"ip"`
+	MAC         string   `json:"mac"`
+	Signal      string   `json:"signal"`
+	Account     string   `json:"account"`
+	LastChecked string   `json:"lastChecked"`
+	Networks    []string `json:"networks"`
 }
 
 func NewApp() *App {
@@ -73,12 +75,22 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 	if username == "" || password == "" {
 		return fmt.Errorf("请输入账号和密码")
 	}
-	info, err := network.Detect()
-	if err != nil {
-		a.setState(AppState{Status: "offline", Message: err.Error()})
+	a.mu.Lock()
+	networks := append([]string(nil), a.state.Networks...)
+	a.mu.Unlock()
+	ssid := networkForRole(networks, role)
+	if ssid == "" {
+		err := fmt.Errorf("附近没有发现对应的校园网络")
+		a.setState(AppState{Status: "offline", Message: err.Error(), Networks: networks})
 		return err
 	}
-	a.setState(AppState{Status: "connecting", Message: "正在连接校园网", SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal})
+	a.setState(AppState{Status: "connecting", Message: "正在连接 " + ssid, Networks: networks})
+	info, err := network.Connect(ssid)
+	if err != nil {
+		a.setState(AppState{Status: "offline", Message: err.Error(), Networks: networks})
+		return err
+	}
+	a.setState(AppState{Status: "connecting", Message: "正在认证校园网", SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal, Networks: networks})
 	client, err := portal.New("http://192.168.99.135", "1", net.ParseIP(info.IP))
 	if err != nil {
 		return err
@@ -138,16 +150,22 @@ func (a *App) Logout() error {
 func (a *App) Refresh() AppState { a.refresh(); return a.State() }
 
 func (a *App) refresh() {
+	networks, scanErr := network.ScanCampus()
 	info, err := network.Detect()
 	if err != nil {
-		a.setState(AppState{Status: "offline", Message: err.Error()})
+		message := "未连接到校园网"
+		if scanErr != nil {
+			message = "无线网络扫描暂不可用"
+		}
+		a.setState(AppState{Status: "offline", Message: message, Networks: networks})
 		return
 	}
 	a.mu.Lock()
 	state := a.state
 	state.SSID, state.Interface, state.IP, state.MAC, state.Signal = info.SSID, info.Interface, info.IP, info.MAC, info.Signal
-	a.state = state
+	state.Networks = networks
 	a.mu.Unlock()
+	a.setState(state)
 }
 
 func (a *App) monitor() {
@@ -177,4 +195,14 @@ func mask(value string) string {
 		return "***"
 	}
 	return value[:2] + "***" + value[len(value)-1:]
+}
+
+func networkForRole(networks []string, role string) string {
+	for _, ssid := range networks {
+		isStudent := strings.HasPrefix(strings.ToLower(ssid), "student-")
+		if (role == "student" && isStudent) || (role == "teacher" && !isStudent) {
+			return ssid
+		}
+	}
+	return ""
 }

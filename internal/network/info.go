@@ -3,9 +3,11 @@ package network
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type Info struct {
@@ -18,9 +20,87 @@ type Info struct {
 }
 
 var campusSSID = regexp.MustCompile(`(?i)^(student|teacher|tercher)-xyw$`)
+var listedSSID = regexp.MustCompile(`(?im)^\s*SSID\s+\d+\s*:\s*(.+?)\s*$`)
+
+func ScanCampus() ([]string, error) {
+	cmd := exec.Command("netsh", "wlan", "show", "networks", "mode=bssid")
+	hideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("scan Wi-Fi networks: %w", err)
+	}
+	return parseNetworks(string(out)), nil
+}
+
+func Connect(ssid string) (Info, error) {
+	if !campusSSID.MatchString(ssid) {
+		return Info{}, fmt.Errorf("unsupported campus network: %s", ssid)
+	}
+	if info, err := Detect(); err == nil && strings.EqualFold(info.SSID, ssid) {
+		return info, nil
+	}
+	if err := addOpenProfile(ssid); err != nil {
+		return Info{}, fmt.Errorf("prepare Wi-Fi %s: %w", ssid, err)
+	}
+	cmd := exec.Command("netsh", "wlan", "connect", "name="+ssid, "ssid="+ssid)
+	hideWindow(cmd)
+	if err := cmd.Run(); err != nil {
+		return Info{}, fmt.Errorf("connect Wi-Fi %s: %w", ssid, err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if info, err := Detect(); err == nil && strings.EqualFold(info.SSID, ssid) {
+			return info, nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return Info{}, fmt.Errorf("连接 %s 超时", ssid)
+}
+
+func addOpenProfile(ssid string) error {
+	profile := fmt.Sprintf(`<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+  <name>%s</name>
+  <SSIDConfig><SSID><name>%s</name></SSID></SSIDConfig>
+  <connectionType>ESS</connectionType>
+  <connectionMode>manual</connectionMode>
+  <MSM><security><authEncryption><authentication>open</authentication><encryption>none</encryption><useOneX>false</useOneX></authEncryption></security></MSM>
+</WLANProfile>`, ssid, ssid)
+	file, err := os.CreateTemp("", "hbasstunet-wifi-*.xml")
+	if err != nil {
+		return err
+	}
+	path := file.Name()
+	defer os.Remove(path)
+	if _, err := file.WriteString(profile); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	cmd := exec.Command("netsh", "wlan", "add", "profile", "filename="+path, "user=current")
+	hideWindow(cmd)
+	return cmd.Run()
+}
+
+func parseNetworks(output string) []string {
+	seen := make(map[string]bool)
+	var networks []string
+	for _, match := range listedSSID.FindAllStringSubmatch(output, -1) {
+		ssid := strings.TrimSpace(match[1])
+		if campusSSID.MatchString(ssid) && !seen[strings.ToLower(ssid)] {
+			seen[strings.ToLower(ssid)] = true
+			networks = append(networks, ssid)
+		}
+	}
+	return networks
+}
 
 func Detect() (Info, error) {
-	if out, err := exec.Command("netsh", "wlan", "show", "interfaces").Output(); err == nil {
+	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
+	hideWindow(cmd)
+	if out, err := cmd.Output(); err == nil {
 		return parseNetsh(string(out))
 	}
 	return detectInterfaces()

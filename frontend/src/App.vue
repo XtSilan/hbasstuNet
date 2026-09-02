@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ArrowLeftRight, Check, Eye, EyeOff, LogOut, RefreshCw, Settings as SettingsIcon, ShieldCheck, Wifi } from 'lucide-vue-next'
+import { Check, Eye, EyeOff, LogOut, RefreshCw, Settings as SettingsIcon, ShieldCheck, Wifi } from 'lucide-vue-next'
 import { Login, Logout, Refresh, SaveSettings, Settings, State } from '../wailsjs/go/main/App'
 import { EventsOn } from '../wailsjs/runtime/runtime'
 
@@ -14,9 +14,10 @@ type NetworkState = {
   signal: string
   account: string
   lastChecked: string
+  networks: string[]
 }
 
-const state = ref<NetworkState>({ status: 'idle', message: '等待连接', ssid: '', interface: '', ip: '', mac: '', signal: '', account: '', lastChecked: '' })
+const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园网络', ssid: '', interface: '', ip: '', mac: '', signal: '', account: '', lastChecked: '', networks: [] })
 const form = ref({ username: '', password: '', role: 'student', isp: 'cucc', remember: true, autoStart: false })
 const busy = ref(false)
 const error = ref('')
@@ -24,7 +25,6 @@ const showPassword = ref(false)
 let stopEvents: (() => void) | undefined
 
 const connected = computed(() => state.value.status === 'connected')
-const roleName = computed(() => form.value.role === 'student' ? 'Student-XYW' : 'Tercher-XYW')
 const stateName = computed(() => ({ connected: '已连接', connecting: '正在认证', offline: '未连接校园网', error: '认证失败', idle: '等待连接' }[state.value.status] ?? '等待连接'))
 
 onMounted(async () => {
@@ -66,8 +66,8 @@ async function savePreferences() {
 <template>
   <main class="app-shell">
     <header class="titlebar">
-      <div class="app-identity"><Wifi :size="18" /><span>理工校园网登录器</span></div>
-      <div class="title-actions"><button class="icon-button" title="刷新网络" @click="refresh"><RefreshCw :size="16" /></button><span>hbasstuNet</span></div>
+      <div class="app-identity"><img src="./assets/images/campus.svg" alt="" /><span>理工校园网登录器</span></div>
+      <div class="title-actions"><button class="icon-button" title="扫描附近网络" @click="refresh"><RefreshCw :size="16" /></button></div>
     </header>
 
     <section v-if="!connected" class="login-view">
@@ -77,11 +77,13 @@ async function savePreferences() {
           <span class="wifi-ring ring-one"></span><span class="wifi-ring ring-two"></span><span class="wifi-ring ring-three"></span>
           <Wifi :size="54" stroke-width="1.4" />
         </div>
-        <div class="network-selector">
-          <button title="切换账号类型" @click="form.role = form.role === 'student' ? 'teacher' : 'student'"><ArrowLeftRight :size="16" /></button>
-          <div><strong>{{ roleName }}</strong><span>{{ form.role === 'student' ? '学生网络' : '教师网络' }}</span></div>
+        <div class="nearby-networks">
+          <div class="nearby-heading"><strong>附近网络</strong><span>{{ state.networks.length ? '发现可用校园网络' : '正在扫描' }}</span></div>
+          <button v-for="network in state.networks" :key="network" class="network-option" :class="{ selected: form.role === (network.toLowerCase().startsWith('tercher') || network.toLowerCase().startsWith('teacher') ? 'teacher' : 'student') }" @click="form.role = network.toLowerCase().startsWith('tercher') || network.toLowerCase().startsWith('teacher') ? 'teacher' : 'student'">
+            <span class="network-light"></span><Wifi :size="17" /><span>{{ network }}</span><small>可用</small>
+          </button>
+          <div v-if="!state.networks.length" class="scan-placeholder"><span class="scan-pulse"></span><span>扫描附近 Wi-Fi</span></div>
         </div>
-        <div class="network-state"><span :class="['state-dot', state.status]"></span><div><strong>{{ stateName }}</strong><span>{{ state.ssid || state.message }}</span></div></div>
       </aside>
 
       <section class="login-form">
@@ -101,7 +103,7 @@ async function savePreferences() {
           <p v-if="error" class="error-message">{{ error }}</p>
           <button class="primary-button" type="submit" :disabled="busy || !form.username || !form.password">{{ busy ? '正在认证…' : '连接校园网' }}</button>
         </form>
-        <p class="form-note">仅在识别到 Student-XYW 或 Tercher-XYW 后发起认证</p>
+        <div class="login-status"><span :class="['state-dot', state.status]"></span><div><strong>{{ stateName }}</strong><span>{{ state.ssid || state.message }}</span></div></div>
       </section>
     </section>
 
