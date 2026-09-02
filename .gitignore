@@ -1,0 +1,19 @@
+todo.md
+/图片/
+/校园网/
+
+# Local credentials and settings
+.env
+*.local
+
+# Build output
+/build/bin/
+/frontend/dist/
+/frontend/node_modules/
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

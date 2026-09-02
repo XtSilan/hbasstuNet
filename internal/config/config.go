@@ -1,0 +1,61 @@
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
+type Settings struct {
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Role      string `json:"role"`
+	ISP       string `json:"isp"`
+	Remember  bool   `json:"remember"`
+	AutoStart bool   `json:"autoStart"`
+}
+
+func Path() string {
+	if dir, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(dir, "hbasstuNet", "settings.json")
+	}
+	return "settings.json"
+}
+
+func Load(path string) (Settings, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return Settings{Role: "student", ISP: "cucc"}, nil
+	}
+	if err != nil {
+		return Settings{}, err
+	}
+	var settings Settings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return Settings{}, err
+	}
+	if settings.Role == "" {
+		settings.Role = "student"
+	}
+	if settings.ISP == "" {
+		settings.ISP = "cucc"
+	}
+	if !settings.Remember {
+		settings.Password = ""
+	}
+	return settings, nil
+}
+
+func Save(path string, settings Settings) error {
+	if !settings.Remember {
+		settings.Password = ""
+	}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0600)
+}
