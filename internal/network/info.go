@@ -35,9 +35,12 @@ func Connect(ssid string) (Info, error) {
 	if !campusSSID.MatchString(ssid) {
 		return Info{}, fmt.Errorf("unsupported campus network: %s", ssid)
 	}
-	if info, err := Detect(); err == nil && strings.EqualFold(info.SSID, ssid) {
-		return info, nil
+	initial, initialErr := Detect()
+	alreadyAssociated := strings.EqualFold(initial.SSID, ssid)
+	if initialErr == nil && alreadyAssociated {
+		return initial, nil
 	}
+	initialIP := initial.IP
 	if !hasProfile(ssid) {
 		if err := addOpenProfile(ssid); err != nil {
 			return Info{}, fmt.Errorf("创建 Wi-Fi 配置 %s 失败：%w", ssid, err)
@@ -47,12 +50,25 @@ func Connect(ssid string) (Info, error) {
 	if err != nil {
 		return Info{}, fmt.Errorf("连接 Wi-Fi %s 失败：%s", ssid, commandMessage(err, out))
 	}
-	deadline := time.Now().Add(15 * time.Second)
+	// Windows may report the new SSID before DHCP has assigned an address.
+	deadline := time.Now().Add(45 * time.Second)
+	var lastErr error
 	for time.Now().Before(deadline) {
-		if info, err := Detect(); err == nil && strings.EqualFold(info.SSID, ssid) {
-			return info, nil
+		info, detectErr := Detect()
+		if strings.EqualFold(info.SSID, ssid) {
+			if detectErr == nil {
+				if alreadyAssociated || initialIP == "" || info.IP != initialIP {
+					return info, nil
+				}
+				lastErr = fmt.Errorf("正在等待校园网分配 IPv4 地址")
+			} else {
+				lastErr = detectErr
+			}
 		}
 		time.Sleep(500 * time.Millisecond)
+	}
+	if lastErr != nil {
+		return Info{}, fmt.Errorf("连接 %s 超时：%v", ssid, lastErr)
 	}
 	return Info{}, fmt.Errorf("连接 %s 超时", ssid)
 }
@@ -133,33 +149,20 @@ func commandMessage(err error, output string) string {
 }
 
 func parseNetsh(output string) (Info, error) {
-	var info Info
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		key, value, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(key)) {
-		case "name":
-			info.Interface = strings.TrimSpace(value)
-		case "ssid":
-			info.SSID = strings.TrimSpace(value)
-		case "signal":
-			info.Signal = strings.TrimSpace(value)
-		}
-	}
+	info := parseNetshFields(output)
 	if info.SSID == "" {
 		return info, fmt.Errorf("no Wi-Fi connection")
 	}
 	info.Ready = campusSSID.MatchString(info.SSID)
 	if info.Interface != "" {
 		if iface, err := net.InterfaceByName(info.Interface); err == nil {
-			info.MAC = iface.HardwareAddr.String()
+			if len(iface.HardwareAddr) > 0 {
+				info.MAC = iface.HardwareAddr.String()
+			}
 			if addrs, err := iface.Addrs(); err == nil {
 				for _, addr := range addrs {
 					ip, _, e := net.ParseCIDR(addr.String())
-					if e == nil && ip.To4() != nil {
+					if e == nil && ip.To4() != nil && !ip.IsLinkLocalUnicast() {
 						info.IP = ip.To4().String()
 						break
 					}
@@ -174,6 +177,28 @@ func parseNetsh(output string) (Info, error) {
 		return info, fmt.Errorf("campus Wi-Fi has no IPv4 address")
 	}
 	return info, nil
+}
+
+func parseNetshFields(output string) Info {
+	var info Info
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "name", "名称":
+			info.Interface = strings.TrimSpace(value)
+		case "ssid":
+			info.SSID = strings.TrimSpace(value)
+		case "signal", "信号":
+			info.Signal = strings.TrimSpace(value)
+		case "physical address", "物理地址":
+			info.MAC = strings.TrimSpace(value)
+		}
+	}
+	return info
 }
 
 func detectInterfaces() (Info, error) {
