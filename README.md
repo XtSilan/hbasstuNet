@@ -15,7 +15,7 @@ hbasstuNet 自动识别校园无线网络和本机网络接口，使用当前 IP
 
 ## ✨ 当前能力
 
-- 识别 `Student-XYW`、`Teacher-XYW` 和校内实际使用的 `Tercher-XYW`
+- 识别 `Student-XYW`、`Teacher-XYW` 网络SSID
 - 支持学生与教师账号模式切换
 - 支持联通、移动、电信运营商选项
 - 完成 CSRF Token、Cookie、账号检查、登录和登出流程
@@ -26,7 +26,7 @@ hbasstuNet 自动识别校园无线网络和本机网络接口，使用当前 IP
 - 非校园网络下不发起 Portal 认证请求
 
 > [!IMPORTANT]
-> 当前仓库仍处于早期开发阶段。系统托盘、窗口关闭后保持后台运行、Portal 掉线自动重认证尚未完成，不应按生产级常驻客户端部署。
+> 系统托盘、窗口关闭后保持后台运行、Portal 掉线自动重认证尚未完成
 
 ## 🧱 技术栈与架构
 
@@ -149,7 +149,7 @@ npm run build --prefix frontend
 - 不会在日志中输出密码、CSRF Token 或 Cookie。
 - 保存密码使用 Windows 当前用户范围的 DPAPI。
 - Portal 请求只在识别到指定校园 SSID 后发起。
-- 开机启动项写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，无需管理员权限。
+- 开机启动项写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
 
 发现安全问题时，请不要公开真实账号、会话标识或校园网内部数据。
 
