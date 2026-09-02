@@ -2,6 +2,9 @@ package main
 
 import (
 	"embed"
+	"log"
+
+	"hbasstuNet/internal/applog"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -12,6 +15,11 @@ import (
 var assets embed.FS
 
 func main() {
+	logFile, logErr := applog.Init()
+	if logErr == nil {
+		defer logFile.Close()
+		log.Printf("hbasstuNet starting; log=%s", applog.Path())
+	}
 	// Create an instance of the app structure
 	app := NewApp()
 
@@ -31,6 +39,7 @@ func main() {
 	})
 
 	if err != nil {
+		log.Printf("application stopped with error: %v", err)
 		println("Error:", err.Error())
 	}
 }

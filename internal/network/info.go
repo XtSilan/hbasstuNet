@@ -2,6 +2,7 @@ package network
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -23,13 +24,11 @@ var campusSSID = regexp.MustCompile(`(?i)^(student|teacher|tercher)-xyw$`)
 var listedSSID = regexp.MustCompile(`(?im)^\s*SSID\s+\d+\s*:\s*(.+?)\s*$`)
 
 func ScanCampus() ([]string, error) {
-	cmd := exec.Command("netsh", "wlan", "show", "networks", "mode=bssid")
-	hideWindow(cmd)
-	out, err := cmd.Output()
+	out, err := runNetsh("wlan", "show", "networks", "mode=bssid")
 	if err != nil {
-		return nil, fmt.Errorf("scan Wi-Fi networks: %w", err)
+		return nil, fmt.Errorf("扫描附近 Wi-Fi 失败：%s", commandMessage(err, out))
 	}
-	return parseNetworks(string(out)), nil
+	return parseNetworks(out), nil
 }
 
 func Connect(ssid string) (Info, error) {
@@ -39,13 +38,14 @@ func Connect(ssid string) (Info, error) {
 	if info, err := Detect(); err == nil && strings.EqualFold(info.SSID, ssid) {
 		return info, nil
 	}
-	if err := addOpenProfile(ssid); err != nil {
-		return Info{}, fmt.Errorf("prepare Wi-Fi %s: %w", ssid, err)
+	if !hasProfile(ssid) {
+		if err := addOpenProfile(ssid); err != nil {
+			return Info{}, fmt.Errorf("创建 Wi-Fi 配置 %s 失败：%w", ssid, err)
+		}
 	}
-	cmd := exec.Command("netsh", "wlan", "connect", "name="+ssid, "ssid="+ssid)
-	hideWindow(cmd)
-	if err := cmd.Run(); err != nil {
-		return Info{}, fmt.Errorf("connect Wi-Fi %s: %w", ssid, err)
+	out, err := runNetsh("wlan", "connect", "name="+ssid, "ssid="+ssid)
+	if err != nil {
+		return Info{}, fmt.Errorf("连接 Wi-Fi %s 失败：%s", ssid, commandMessage(err, out))
 	}
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
@@ -79,9 +79,16 @@ func addOpenProfile(ssid string) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	cmd := exec.Command("netsh", "wlan", "add", "profile", "filename="+path, "user=current")
-	hideWindow(cmd)
-	return cmd.Run()
+	out, err := runNetsh("wlan", "add", "profile", "filename="+path, "user=current")
+	if err != nil {
+		return fmt.Errorf("%s", commandMessage(err, out))
+	}
+	return nil
+}
+
+func hasProfile(ssid string) bool {
+	_, err := runNetsh("wlan", "show", "profile", "name="+ssid)
+	return err == nil
 }
 
 func parseNetworks(output string) []string {
@@ -98,12 +105,31 @@ func parseNetworks(output string) []string {
 }
 
 func Detect() (Info, error) {
-	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
-	hideWindow(cmd)
-	if out, err := cmd.Output(); err == nil {
-		return parseNetsh(string(out))
+	if out, err := runNetsh("wlan", "show", "interfaces"); err == nil {
+		return parseNetsh(out)
 	}
 	return detectInterfaces()
+}
+
+func runNetsh(args ...string) (string, error) {
+	cmd := exec.Command("netsh", args...)
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		log.Printf("netsh %s failed: %v; output=%q", strings.Join(args, " "), err, text)
+	}
+	return text, err
+}
+
+func commandMessage(err error, output string) string {
+	message := strings.TrimSpace(output)
+	if message == "" {
+		return err.Error()
+	}
+	message = strings.ReplaceAll(message, "\r", " ")
+	message = strings.ReplaceAll(message, "\n", " ")
+	return strings.Join(strings.Fields(message), " ")
 }
 
 func parseNetsh(output string) (Info, error) {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -47,6 +48,8 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	if settings, err := config.Load(a.configPath); err == nil {
 		a.settings = settings
+	} else {
+		log.Printf("load settings failed: %v", err)
 	}
 	a.refresh()
 	go a.monitor()
@@ -63,15 +66,23 @@ func (a *App) SaveSettings(settings config.Settings) error {
 		settings.ISP = "cucc"
 	}
 	if err := config.Save(a.configPath, settings); err != nil {
+		log.Printf("save settings failed: %v", err)
 		return err
 	}
 	a.mu.Lock()
 	a.settings = settings
 	a.mu.Unlock()
-	return startup.Set(settings.AutoStart)
+	if err := startup.Set(settings.AutoStart); err != nil {
+		log.Printf("set auto start enabled=%t failed: %v", settings.AutoStart, err)
+		return fmt.Errorf("更新开机启动失败：%w", err)
+	}
+	log.Printf("auto start updated; enabled=%t", settings.AutoStart)
+	log.Printf("settings saved; remember=%t autoStart=%t role=%s", settings.Remember, settings.AutoStart, settings.Role)
+	return nil
 }
 
 func (a *App) Login(username, password, role, isp string, remember bool) error {
+	log.Printf("login requested; role=%s isp=%s remember=%t", role, isp, remember)
 	if username == "" || password == "" {
 		return fmt.Errorf("请输入账号和密码")
 	}
@@ -87,6 +98,7 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 	a.setState(AppState{Status: "connecting", Message: "正在连接 " + ssid, Networks: networks})
 	info, err := network.Connect(ssid)
 	if err != nil {
+		log.Printf("Wi-Fi connection failed; ssid=%s error=%v", ssid, err)
 		a.setState(AppState{Status: "offline", Message: err.Error(), Networks: networks})
 		return err
 	}
@@ -118,6 +130,7 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 		a.fail(err)
 		return err
 	}
+	log.Printf("portal login succeeded; ssid=%s ip=%s account=%s", info.SSID, info.IP, mask(username))
 	settings := config.Settings{Username: username, Password: password, Role: role, ISP: isp, Remember: remember, AutoStart: a.settings.AutoStart}
 	if err := a.SaveSettings(settings); err != nil {
 		return err
@@ -189,7 +202,10 @@ func (a *App) setState(state AppState) {
 		runtime.EventsEmit(a.ctx, "state:changed", state)
 	}
 }
-func (a *App) fail(err error) { a.setState(AppState{Status: "error", Message: err.Error()}) }
+func (a *App) fail(err error) {
+	log.Printf("operation failed: %v", err)
+	a.setState(AppState{Status: "error", Message: err.Error()})
+}
 func mask(value string) string {
 	if len(value) <= 3 {
 		return "***"

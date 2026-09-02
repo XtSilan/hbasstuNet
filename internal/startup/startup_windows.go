@@ -3,8 +3,10 @@
 package startup
 
 import (
+	"errors"
 	"golang.org/x/sys/windows/registry"
 	"os"
+	"syscall"
 )
 
 const keyPath = `Software\Microsoft\Windows\CurrentVersion\Run`
@@ -17,11 +19,22 @@ func Set(enabled bool) error {
 	}
 	defer k.Close()
 	if !enabled {
-		return k.DeleteValue(valueName)
+		err := k.DeleteValue(valueName)
+		if ignoreMissingValue(err) == nil {
+			return nil
+		}
+		return err
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	return k.SetStringValue(valueName, `"`+exe+`" --background`)
+}
+
+func ignoreMissingValue(err error) error {
+	if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
+		return nil
+	}
+	return err
 }
