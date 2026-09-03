@@ -70,6 +70,8 @@ export namespace main {
 	    authMessage: string;
 	    dialCode: string;
 	    dialMessage: string;
+	    downloadRate: number;
+	    uploadRate: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppState(source);
@@ -95,6 +97,8 @@ export namespace main {
 	        this.authMessage = source["authMessage"];
 	        this.dialCode = source["dialCode"];
 	        this.dialMessage = source["dialMessage"];
+	        this.downloadRate = source["downloadRate"];
+	        this.uploadRate = source["uploadRate"];
 	    }
 	}
 	export class UpdateInfo {

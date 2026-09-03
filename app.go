@@ -33,27 +33,33 @@ type App struct {
 	info          network.Info
 	allowClose    bool
 	frontendReady bool
+	trafficMu     sync.Mutex
+	trafficIn     uint64
+	trafficOut    uint64
+	trafficAt     time.Time
 }
 
 type AppState struct {
-	Status      string   `json:"status"`
-	Message     string   `json:"message"`
-	SSID        string   `json:"ssid"`
-	Interface   string   `json:"interface"`
-	IP          string   `json:"ip"`
-	MAC         string   `json:"mac"`
-	Signal      string   `json:"signal"`
-	Account     string   `json:"account"`
-	LastChecked string   `json:"lastChecked"`
-	Networks    []string `json:"networks"`
-	BytesIn4    int64    `json:"bytesIn4"`
-	BytesOut4   int64    `json:"bytesOut4"`
-	OnlineCount int      `json:"onlineCount"`
-	Terminals   []string `json:"terminals"`
-	AuthCode    string   `json:"authCode"`
-	AuthMessage string   `json:"authMessage"`
-	DialCode    string   `json:"dialCode"`
-	DialMessage string   `json:"dialMessage"`
+	Status       string   `json:"status"`
+	Message      string   `json:"message"`
+	SSID         string   `json:"ssid"`
+	Interface    string   `json:"interface"`
+	IP           string   `json:"ip"`
+	MAC          string   `json:"mac"`
+	Signal       string   `json:"signal"`
+	Account      string   `json:"account"`
+	LastChecked  string   `json:"lastChecked"`
+	Networks     []string `json:"networks"`
+	BytesIn4     int64    `json:"bytesIn4"`
+	BytesOut4    int64    `json:"bytesOut4"`
+	OnlineCount  int      `json:"onlineCount"`
+	Terminals    []string `json:"terminals"`
+	AuthCode     string   `json:"authCode"`
+	AuthMessage  string   `json:"authMessage"`
+	DialCode     string   `json:"dialCode"`
+	DialMessage  string   `json:"dialMessage"`
+	DownloadRate int64    `json:"downloadRate"`
+	UploadRate   int64    `json:"uploadRate"`
 }
 
 type AboutInfo struct {
@@ -135,6 +141,7 @@ func (a *App) startup(ctx context.Context) {
 	log.Printf("application startup callback completed")
 	go a.initialize()
 	go a.monitor()
+	go a.monitorTraffic()
 	go a.startTray()
 }
 
@@ -342,6 +349,52 @@ func (a *App) monitor() {
 			}
 		}
 	}
+}
+
+func (a *App) monitorTraffic() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-ticker.C:
+			a.mu.Lock()
+			iface := a.state.Interface
+			current := a.state
+			a.mu.Unlock()
+			if iface == "" {
+				continue
+			}
+			inBytes, outBytes, err := network.Traffic(iface)
+			if err != nil {
+				continue
+			}
+			now := time.Now()
+			a.trafficMu.Lock()
+			if !a.trafficAt.IsZero() {
+				seconds := now.Sub(a.trafficAt).Seconds()
+				if seconds > 0 {
+					current.DownloadRate = int64(float64(maxDelta(inBytes, a.trafficIn)) / seconds)
+					current.UploadRate = int64(float64(maxDelta(outBytes, a.trafficOut)) / seconds)
+				}
+			}
+			a.trafficIn, a.trafficOut, a.trafficAt = inBytes, outBytes, now
+			a.trafficMu.Unlock()
+			if current.Status == "connected" {
+				current.BytesIn4 = int64(inBytes)
+				current.BytesOut4 = int64(outBytes)
+				a.setState(current)
+			}
+		}
+	}
+}
+
+func maxDelta(current, previous uint64) uint64 {
+	if current < previous {
+		return 0
+	}
+	return current - previous
 }
 
 func (a *App) setState(state AppState) {

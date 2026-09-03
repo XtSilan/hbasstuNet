@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { Activity, ArrowLeft, Check, CircleHelp, Eye, EyeOff, ExternalLink, Github, LogOut, RefreshCw, Settings as SettingsIcon, ShieldCheck, Wifi, X } from 'lucide-vue-next'
+import { Activity, Check, CircleHelp, Eye, EyeOff, ExternalLink, Github, LogOut, RefreshCw, Settings as SettingsIcon, ShieldCheck, Wifi, X } from 'lucide-vue-next'
 import { About, CheckUpdate, Login, Logout, MarkFrontendReady, Refresh, SaveSettings, Settings as LoadSettings, State, CloseToTray, ExitApp } from '../wailsjs/go/main/App'
 import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime'
 
@@ -23,12 +23,14 @@ type NetworkState = {
   authMessage: string
   dialCode: string
   dialMessage: string
+  downloadRate: number
+  uploadRate: number
 }
 
 type AboutInfo = { version: string; sha256: string; project: string; issues: string }
 type UpdateInfo = { status: string; version: string; name: string; notes: string; url: string; publishedAt: string }
 
-const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园网络', ssid: '', interface: '', ip: '', mac: '', signal: '', account: '', lastChecked: '', networks: [], bytesIn4: 0, bytesOut4: 0, onlineCount: 0, terminals: [], authCode: '', authMessage: '', dialCode: '', dialMessage: '' })
+const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园网络', ssid: '', interface: '', ip: '', mac: '', signal: '', account: '', lastChecked: '', networks: [], bytesIn4: 0, bytesOut4: 0, onlineCount: 0, terminals: [], authCode: '', authMessage: '', dialCode: '', dialMessage: '', downloadRate: 0, uploadRate: 0 })
 const form = ref({ username: '', password: '', role: 'student', isp: 'cucc', remember: true, autoLogin: false, exitBehavior: 'tray', skipExitPrompt: false })
 const busy = ref(false)
 const error = ref('')
@@ -36,17 +38,19 @@ const showPassword = ref(false)
 const view = ref<'login' | 'status' | 'traffic' | 'settings' | 'about'>('login')
 const closeOpen = ref(false)
 const closeRemember = ref(false)
-const settingsOpen = computed(() => view.value === 'settings')
-const aboutOpen = computed(() => view.value === 'about')
 const about = ref<AboutInfo>({ version: '0.1.0', sha256: '', project: 'https://github.com/XtSilan/hbasstuNet', issues: 'https://github.com/XtSilan/hbasstuNet/issues' })
 const updateStatus = ref('')
 const update = ref<UpdateInfo>({ status: '', version: '', name: '', notes: '', url: '', publishedAt: '' })
+const rateHistory = ref<number[]>(Array.from({ length: 48 }, () => 0))
+let rateTimer: number | undefined
 let stopEvents: (() => void) | undefined
 
 const connected = computed(() => state.value.status === 'connected')
 const stateName = computed(() => ({ connected: '已连接', connecting: '正在认证', offline: '未连接校园网', error: '认证失败', idle: '等待连接' }[state.value.status] ?? '等待连接'))
 const totalBytes = computed(() => state.value.bytesIn4 + state.value.bytesOut4)
 function formatBytes(bytes: number) { if (!bytes) return '0 B'; const units = ['B', 'KB', 'MB', 'GB', 'TB']; const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return (bytes / Math.pow(1024, index)).toFixed(index ? 2 : 0) + ' ' + units[index] }
+function formatRate(bytes: number) { return formatBytes(bytes) + '/s' }
+const chartPoints = computed(() => { const values = rateHistory.value; const max = Math.max(...values, 1); return values.map((value, index) => `${(index / (values.length - 1)) * 100},${96 - (value / max) * 82}`).join(' ') })
 function normalizeState(next: Partial<NetworkState> | null | undefined): NetworkState {
   const value = next ?? {}
   return {
@@ -68,12 +72,14 @@ function normalizeState(next: Partial<NetworkState> | null | undefined): Network
     authMessage: value.authMessage || '',
     dialCode: value.dialCode || '',
     dialMessage: value.dialMessage || '',
+    downloadRate: Number.isFinite(Number(value.downloadRate)) ? Number(value.downloadRate) : 0,
+    uploadRate: Number.isFinite(Number(value.uploadRate)) ? Number(value.uploadRate) : 0,
   }
 }
 
 onMounted(async () => {
   await MarkFrontendReady()
-  stopEvents = EventsOn('state:changed', (next: NetworkState) => { const normalized = normalizeState(next); state.value = normalized; if (normalized.status === 'connected') view.value = 'status'; else if (view.value === 'status' || view.value === 'traffic') view.value = 'login' })
+  stopEvents = EventsOn('state:changed', (next: NetworkState) => { state.value = normalizeState(next) })
   EventsOn('close:requested', () => { closeOpen.value = true })
   EventsOn('navigate:settings', () => { view.value = 'settings' })
   try {
@@ -84,9 +90,13 @@ onMounted(async () => {
   } catch (reason) {
     error.value = `初始化失败：${String(reason).replace(/^Error:\s*/, '')}`
   }
+  rateTimer = window.setInterval(() => {
+    const rate = Math.max(state.value.downloadRate, state.value.uploadRate)
+    rateHistory.value = [...rateHistory.value.slice(1), rate]
+  }, 1000)
 })
 
-onUnmounted(() => stopEvents?.())
+onUnmounted(() => { stopEvents?.(); if (rateTimer) window.clearInterval(rateTimer) })
 
 async function connect() {
   busy.value = true
@@ -147,7 +157,6 @@ async function checkUpdates() {
   <main class="app-shell">
     <header class="titlebar">
       <div class="app-identity"><img src="./assets/images/campus.svg" alt="" /><span>理工校园网登录器</span></div>
-      <div class="title-actions"><button class="icon-button" title="设置" @click="view = 'settings'"><SettingsIcon :size="16" /></button><button class="icon-button" title="扫描附近网络" @click="refresh"><RefreshCw :size="16" /></button></div>
     </header>
 
     <!-- Keep a concrete page mounted for every view value. In particular, a state
@@ -194,7 +203,7 @@ async function checkUpdates() {
       <nav class="sidebar"><button :class="{ active: view === 'status' }" title="网络状态" @click="view = 'status'"><Wifi :size="19" /></button><button :class="{ active: view === 'traffic' }" title="流量面板" @click="view = 'traffic'"><Activity :size="19" /></button><button title="设置" @click="view = 'settings'"><SettingsIcon :size="19" /></button><button title="关于" @click="showAbout"><CircleHelp :size="19" /></button></nav>
       <section class="status-content">
         <div class="status-heading"><div><span class="section-label">{{ view === 'traffic' ? '流量概览' : '连接状态' }}</span><h1>{{ view === 'traffic' ? '网络流量' : '校园网络' }}</h1></div><button class="secondary-button" @click="refresh"><RefreshCw :size="15" />刷新</button></div>
-        <template v-if="view === 'traffic'"><section class="traffic-summary"><div class="traffic-total"><span>IPv4 总流量</span><strong>{{ formatBytes(totalBytes) }}</strong></div><div class="traffic-chart"><div class="traffic-bar down" :style="{ height: Math.max(12, Math.min(100, state.bytesIn4 / Math.max(totalBytes, 1) * 100)) + '%' }"><span>↓ {{ formatBytes(state.bytesIn4) }}</span></div><div class="traffic-bar up" :style="{ height: Math.max(12, Math.min(100, state.bytesOut4 / Math.max(totalBytes, 1) * 100)) + '%' }"><span>↑ {{ formatBytes(state.bytesOut4) }}</span></div></div></section><section class="details traffic-details"><h3>在线信息</h3><dl><div><dt>在线设备</dt><dd>{{ state.onlineCount || 0 }}</dd></div><div><dt>物理地址</dt><dd>{{ state.mac || '—' }}</dd></div><div><dt>认证状态</dt><dd>{{ state.authCode || '—' }}</dd></div><div><dt>拨号状态</dt><dd>{{ state.dialCode || '—' }}</dd></div><div><dt>认证提示</dt><dd>{{ state.authMessage || state.message || '—' }}</dd></div><div><dt>终端列表</dt><dd>{{ state.terminals.length ? state.terminals.join('、') : '—' }}</dd></div></dl></section></template>
+        <template v-if="view === 'traffic'"><section class="traffic-summary"><div class="traffic-total"><span>网络速度</span><strong>↑ {{ formatRate(state.uploadRate) }}　↓ {{ formatRate(state.downloadRate) }}</strong></div><div class="traffic-line-chart"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline :points="chartPoints" /></svg></div><div class="traffic-counters"><span>下行总量 <strong>{{ formatBytes(state.bytesIn4) }}</strong></span><span>上行总量 <strong>{{ formatBytes(state.bytesOut4) }}</strong></span></div></section><section class="details traffic-details"><h3>在线信息</h3><dl><div><dt>在线设备</dt><dd>{{ state.onlineCount || 0 }}</dd></div><div><dt>物理地址</dt><dd>{{ state.mac || '—' }}</dd></div><div><dt>认证状态</dt><dd>{{ state.authCode || '—' }}</dd></div><div><dt>拨号状态</dt><dd>{{ state.dialCode || '—' }}</dd></div><div><dt>认证提示</dt><dd>{{ state.authMessage || state.message || '—' }}</dd></div><div><dt>终端列表</dt><dd>{{ state.terminals.length ? state.terminals.join('、') : '—' }}</dd></div></dl></section></template>
         <template v-else>
         <div class="connection-status"><div class="connected-icon"><Wifi :size="34" /></div><div><span class="connected-label"><i></i>连接正常</span><h2>{{ state.ssid }}</h2><p>{{ state.message }}</p></div><button class="danger-button" :disabled="busy" @click="disconnect"><LogOut :size="15" />断开连接</button></div>
         <section class="details"><h3>网络信息</h3><dl><div><dt>认证账号</dt><dd>{{ state.account || '—' }}</dd></div><div><dt>无线网络</dt><dd>{{ state.ssid || '—' }}</dd></div><div><dt>IPv4 地址</dt><dd>{{ state.ip || '—' }}</dd></div><div><dt>网络接口</dt><dd>{{ state.interface || '—' }}</dd></div><div><dt>物理地址</dt><dd>{{ state.mac || '—' }}</dd></div><div><dt>信号强度</dt><dd>{{ state.signal || '—' }}</dd></div></dl></section>
@@ -202,23 +211,29 @@ async function checkUpdates() {
       </section>
     </section>
 
-    <section v-if="view === 'settings'" class="settings-view">
-      <header class="about-header"><button class="icon-button" title="返回" @click="view = connected ? 'status' : 'login'"><ArrowLeft :size="16" /></button><div><span class="section-label">设置</span><h1>应用设置</h1></div></header>
+    <section v-if="view === 'settings'" class="status-view">
+      <nav class="sidebar"><button title="网络状态" @click="view = 'status'"><Wifi :size="19" /></button><button title="流量面板" @click="view = 'traffic'"><Activity :size="19" /></button><button class="active" title="设置"><SettingsIcon :size="19" /></button><button title="关于" @click="showAbout"><CircleHelp :size="19" /></button></nav>
+      <section class="status-content">
+      <header class="about-header"><div><span class="section-label">设置</span><h1>应用设置</h1></div></header>
       <section class="settings-panel">
         <div class="settings-row"><div><strong>自动登录</strong><span>启动后检测校园 Wi-Fi 并使用已保存账号认证</span></div><label class="switch"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span></span></label></div>
         <div class="settings-row"><div><strong>保存密码</strong><span>使用 Windows 用户凭据保护保存的密码</span></div><label class="switch"><input v-model="form.remember" type="checkbox" @change="savePreferences" /><span></span></label></div>
         <div class="settings-row"><div><strong>关闭窗口时</strong><span>选择点击右上角关闭按钮后的行为</span></div><select v-model="form.exitBehavior" @change="savePreferences"><option value="tray">最小化到系统托盘</option><option value="exit">直接退出</option></select></div>
       </section>
+      </section>
     </section>
 
-    <section v-if="view === 'about'" class="about-view">
-      <header class="about-header"><button class="icon-button" title="返回网络状态" @click="view = connected ? 'status' : 'login'"><ArrowLeft :size="16" /></button><div><span class="section-label">关于</span><h1>关于 hbasstuNet</h1></div></header>
+    <section v-if="view === 'about'" class="status-view">
+      <nav class="sidebar"><button title="网络状态" @click="view = 'status'"><Wifi :size="19" /></button><button title="流量面板" @click="view = 'traffic'"><Activity :size="19" /></button><button title="设置" @click="view = 'settings'"><SettingsIcon :size="19" /></button><button class="active" title="关于"><CircleHelp :size="19" /></button></nav>
+      <section class="status-content">
+      <header class="about-header"><div><span class="section-label">关于</span><h1>关于 hbasstuNet</h1></div></header>
       <section class="about-panel">
         <div class="about-brand"><img src="./assets/images/campus.svg" alt="" /><div><strong>hbasstuNet</strong><span>湖北文理学院理工学院校园网登录器</span></div></div>
         <dl class="about-details"><div><dt>版本</dt><dd>v{{ about.version }}</dd></div><div><dt>SHA-256</dt><dd class="hash">{{ about.sha256 || '正在计算…' }}</dd></div><div><dt>项目地址</dt><dd>{{ about.project.replace('https://', '') }}</dd></div></dl>
         <div class="about-actions"><button class="secondary-button" @click="openProject"><Github :size="15" />打开项目主页</button><button class="secondary-button" @click="openIssues"><ExternalLink :size="15" />反馈问题</button></div>
       </section>
       <section class="update-panel"><div class="update-heading"><div><span class="section-label">更新</span><h2>GitHub Release 更新</h2></div><span class="current-version">当前版本 v{{ about.version }}</span></div><p>获取最新版本和发布说明。</p><div v-if="updateStatus" class="release-notes"><strong>{{ update.name || update.version || update.status }}</strong><span>{{ update.notes || '暂无发布说明' }}</span></div><div class="update-actions"><button class="update-button" @click="checkUpdates"><RefreshCw :size="15" />检查更新</button><button v-if="update.url" class="secondary-button" @click="BrowserOpenURL(update.url)"><ExternalLink :size="15" />查看发布页</button><span v-if="updateStatus" class="update-status">{{ updateStatus }}</span></div></section>
+      </section>
     </section>
 
     <div v-if="closeOpen" class="modal-backdrop"><section class="close-dialog"><button class="dialog-close" title="取消" @click="closeOpen = false"><X :size="16" /></button><h2>关闭 hbasstuNet</h2><p>请选择关闭窗口后的操作。</p><div class="close-actions"><button class="secondary-button" @click="closeToTray">最小化到托盘</button><button class="danger-button" @click="exitApp">直接退出</button></div><label class="check-row"><input v-model="closeRemember" type="checkbox" /><span><Check :size="11" /></span>下次不再提示</label></section></div>

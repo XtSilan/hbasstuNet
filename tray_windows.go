@@ -10,7 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-//go:embed logo_campus.png
+//go:embed tray.ico
 var trayIcon []byte
 
 var trayQuit func()
