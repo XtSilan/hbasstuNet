@@ -43,9 +43,9 @@ jobs:
       - name: Verify source
         shell: pwsh
         run: |
+          npm run build --prefix frontend
           go test ./...
           go vet ./...
-          npm run build --prefix frontend
 
       - name: Build Windows executable
         shell: pwsh
