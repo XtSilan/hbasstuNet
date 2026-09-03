@@ -33,6 +33,7 @@ type UpdateInfo = { status: string; version: string; name: string; notes: string
 const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园网络', ssid: '', interface: '', ip: '', mac: '', signal: '', account: '', lastChecked: '', networks: [], bytesIn4: 0, bytesOut4: 0, onlineCount: 0, terminals: [], authCode: '', authMessage: '', dialCode: '', dialMessage: '', downloadRate: 0, uploadRate: 0 })
 const form = ref({ username: '', password: '', role: 'student', isp: 'cucc', remember: true, autoLogin: false, autoStart: false, exitBehavior: 'tray', skipExitPrompt: false })
 const busy = ref(false)
+const autoLoginPending = ref(false)
 const error = ref('')
 const showPassword = ref(false)
 const view = ref<'login' | 'status' | 'traffic' | 'settings' | 'about'>('login')
@@ -83,15 +84,21 @@ onMounted(async () => {
   stopEvents = EventsOn('state:changed', (next: NetworkState) => {
     const normalized = normalizeState(next)
     state.value = normalized
+    if (normalized.status === 'connected' && autoLoginPending.value) {
+      autoLoginPending.value = false
+      if (view.value === 'login') view.value = 'status'
+    }
     if (normalized.status === 'offline' && !normalized.ssid && view.value !== 'login') view.value = 'login'
   })
   EventsOn('close:requested', () => { closeOpen.value = true })
-  EventsOn('navigate:settings', () => { view.value = 'settings' })
+  EventsOn('navigate:settings', () => { void showSettings() })
   try {
     const saved = await LoadSettings()
     form.value = { ...form.value, ...saved, role: 'student' }
     state.value = normalizeState(await State())
     if (state.value.status === 'connected') view.value = 'status'
+    autoLoginPending.value = form.value.autoLogin && !!form.value.username && !!form.value.password && (state.value.status === 'connecting')
+    if (autoLoginPending.value) window.setTimeout(() => { autoLoginPending.value = false }, 60000)
   } catch (reason) {
     error.value = `初始化失败：${String(reason).replace(/^Error:\s*/, '')}`
   }
@@ -113,6 +120,16 @@ async function connect() {
     error.value = String(reason).replace(/^Error:\s*/, '')
   } finally {
     busy.value = false
+  }
+}
+
+async function showSettings() {
+  view.value = 'settings'
+  try {
+    const saved = await LoadSettings()
+    form.value = { ...form.value, ...saved }
+  } catch (reason) {
+    error.value = String(reason).replace(/^Error:\s*/, '')
   }
 }
 
@@ -211,14 +228,14 @@ async function installUpdate() {
             <label class="check-row"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span><Check :size="11" /></span>自动登录</label>
           </div>
           <p v-if="error" class="error-message">{{ error }}</p>
-          <button class="primary-button" type="submit" :disabled="busy || !form.username || !form.password">{{ busy ? '正在认证…' : '连接校园网' }}</button>
+          <button class="primary-button" type="submit" :disabled="busy || autoLoginPending || !form.username || !form.password">{{ busy ? '正在认证…' : autoLoginPending ? '自动登录中…' : '连接校园网' }}</button>
         </form>
         <div class="login-status"><span :class="['state-dot', state.status]"></span><div><strong>{{ stateName }}</strong><span>{{ state.ssid || state.message }}</span></div></div>
       </section>
     </section>
 
     <section v-else-if="view === 'status' || view === 'traffic'" class="status-view">
-      <nav class="sidebar"><button :class="{ active: view === 'status' }" title="网络状态" @click="view = 'status'"><Wifi :size="19" /></button><button :class="{ active: view === 'traffic' }" title="流量面板" @click="view = 'traffic'"><Activity :size="19" /></button><button title="设置" @click="view = 'settings'"><SettingsIcon :size="19" /></button><button title="关于" @click="showAbout"><CircleHelp :size="19" /></button></nav>
+      <nav class="sidebar"><button :class="{ active: view === 'status' }" title="网络状态" @click="view = 'status'"><Wifi :size="19" /></button><button :class="{ active: view === 'traffic' }" title="流量面板" @click="view = 'traffic'"><Activity :size="19" /></button><button title="设置" @click="showSettings"><SettingsIcon :size="19" /></button><button title="关于" @click="showAbout"><CircleHelp :size="19" /></button></nav>
       <section class="status-content">
         <div class="status-heading"><div><span class="section-label">{{ view === 'traffic' ? '流量概览' : '连接状态' }}</span><h1>{{ view === 'traffic' ? '网络流量' : '校园网络' }}</h1></div><button class="secondary-button" @click="refresh"><RefreshCw :size="15" />刷新</button></div>
         <template v-if="view === 'traffic'"><section class="traffic-summary"><div class="traffic-total"><span>网络速度</span><strong>↑ {{ formatRate(state.uploadRate) }}　↓ {{ formatRate(state.downloadRate) }}</strong></div><div class="traffic-line-chart"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline :points="chartPoints" /></svg></div><div class="traffic-counters"><span>下行总量 <strong>{{ formatBytes(state.bytesIn4) }}</strong></span><span>上行总量 <strong>{{ formatBytes(state.bytesOut4) }}</strong></span></div></section><section class="details traffic-details"><h3>在线信息</h3><dl><div><dt>在线设备</dt><dd>{{ state.onlineCount || 0 }}</dd></div><div><dt>物理地址</dt><dd>{{ state.mac || '—' }}</dd></div><div><dt>认证状态</dt><dd>{{ state.authCode || '—' }}</dd></div><div><dt>拨号状态</dt><dd>{{ state.dialCode || '—' }}</dd></div><div><dt>认证提示</dt><dd>{{ state.authMessage || state.message || '—' }}</dd></div><div><dt>终端列表</dt><dd>{{ state.terminals.length ? state.terminals.join('、') : '—' }}</dd></div></dl></section></template>
@@ -235,6 +252,7 @@ async function installUpdate() {
       <header class="about-header"><div><span class="section-label">设置</span><h1>应用设置</h1></div></header>
       <section class="settings-panel">
         <div class="settings-row"><div><strong>保存密码</strong><span>使用 Windows 用户凭据保护保存的密码</span></div><label class="switch"><input v-model="form.remember" type="checkbox" @change="savePreferences" /><span></span></label></div>
+        <div class="settings-row"><div><strong>自动登录</strong><span>启动后发现校园 Wi-Fi 后使用已保存账号认证</span></div><label class="switch"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span></span></label></div>
         <div class="settings-row"><div><strong>开机自启动</strong><span>登录 Windows 后在后台运行 hbasstuNet</span></div><label class="switch"><input v-model="form.autoStart" type="checkbox" @change="savePreferences" /><span></span></label></div>
         <div class="settings-row"><div><strong>关闭窗口时</strong><span>选择点击右上角关闭按钮后的行为</span></div><select v-model="form.exitBehavior" @change="savePreferences"><option value="tray">最小化到系统托盘</option><option value="exit">直接退出</option></select></div>
       </section>
@@ -242,7 +260,7 @@ async function installUpdate() {
     </section>
 
     <section v-if="view === 'about'" class="status-view">
-      <nav class="sidebar"><button title="网络状态" @click="view = 'status'"><Wifi :size="19" /></button><button title="流量面板" @click="view = 'traffic'"><Activity :size="19" /></button><button title="设置" @click="view = 'settings'"><SettingsIcon :size="19" /></button><button class="active" title="关于"><CircleHelp :size="19" /></button></nav>
+      <nav class="sidebar"><button title="网络状态" @click="view = 'status'"><Wifi :size="19" /></button><button title="流量面板" @click="view = 'traffic'"><Activity :size="19" /></button><button title="设置" @click="showSettings"><SettingsIcon :size="19" /></button><button class="active" title="关于"><CircleHelp :size="19" /></button></nav>
       <section class="status-content">
       <header class="about-header"><div><span class="section-label">关于</span><h1>关于 hbasstuNet</h1></div></header>
       <section class="about-panel">

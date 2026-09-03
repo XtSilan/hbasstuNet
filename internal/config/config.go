@@ -13,7 +13,8 @@ type Settings struct {
 	ISP       string `json:"isp"`
 	Remember  bool   `json:"remember"`
 	AutoLogin bool   `json:"autoLogin"`
-	// AutoStart is kept for reading settings written by versions before 0.2.
+	// AutoStart controls the Windows startup entry; AutoLogin controls login
+	// after the app discovers a campus network.
 	AutoStart      bool   `json:"autoStart,omitempty"`
 	ExitBehavior   string `json:"exitBehavior"`
 	SkipExitPrompt bool   `json:"skipExitPrompt"`

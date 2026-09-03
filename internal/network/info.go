@@ -24,6 +24,12 @@ var campusSSID = regexp.MustCompile(`(?i)^(student|teacher|tercher)-xyw$`)
 var listedSSID = regexp.MustCompile(`(?im)^\s*SSID\s+\d+\s*:\s*(.+?)\s*$`)
 
 func ScanCampus() ([]string, error) {
+	// Ask WLAN AutoConfig for a fresh scan first; `show networks` alone may
+	// return the adapter's cached list.
+	if _, err := runNetsh("wlan", "scan"); err != nil {
+		log.Printf("Wi-Fi active scan failed: %v", err)
+	}
+	time.Sleep(1200 * time.Millisecond)
 	out, err := runNetsh("wlan", "show", "networks", "mode=bssid")
 	if err != nil {
 		return nil, fmt.Errorf("扫描附近 Wi-Fi 失败：%s", commandMessage(err, out))
