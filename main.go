@@ -28,6 +28,8 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 	background := slices.Contains(os.Args[1:], "--background")
+	// Keep WebView2 data separate from older builds whose cached renderer could
+	// leave a blank surface after an update.
 	webviewDataPath := filepath.Join(os.Getenv("APPDATA"), "hbasstuNet", "webview2")
 	if err := os.MkdirAll(webviewDataPath, 0o755); err != nil {
 		log.Printf("create WebView2 data directory failed: %v", err)

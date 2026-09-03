@@ -46,6 +46,14 @@ type AppState struct {
 	Account     string   `json:"account"`
 	LastChecked string   `json:"lastChecked"`
 	Networks    []string `json:"networks"`
+	BytesIn4    int64    `json:"bytesIn4"`
+	BytesOut4   int64    `json:"bytesOut4"`
+	OnlineCount int      `json:"onlineCount"`
+	Terminals   []string `json:"terminals"`
+	AuthCode    string   `json:"authCode"`
+	AuthMessage string   `json:"authMessage"`
+	DialCode    string   `json:"dialCode"`
+	DialMessage string   `json:"dialMessage"`
 }
 
 type AboutInfo struct {
@@ -114,7 +122,7 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 }
 
 func NewApp() *App {
-	return &App{configPath: config.Path(), state: AppState{Status: "idle", Message: "输入账号开始连接"}}
+	return &App{configPath: config.Path(), state: AppState{Status: "idle", Message: "输入账号开始连接", Networks: []string{}, Terminals: []string{}}}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -210,7 +218,7 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 		if status.Online != nil && status.Online.Username != "" {
 			account = status.Online.Username
 		}
-		a.setConnected(client, info, account, networks)
+		a.setConnected(client, info, account, networks, status)
 		return nil
 	}
 	check, err := client.Check(ctx, creds)
@@ -241,15 +249,20 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 	if err := a.SaveSettings(settings); err != nil {
 		return err
 	}
-	a.setConnected(client, info, username, networks)
+	a.setConnected(client, info, username, networks, response)
 	return nil
 }
 
-func (a *App) setConnected(client *portal.Client, info network.Info, username string, networks []string) {
+func (a *App) setConnected(client *portal.Client, info network.Info, username string, networks []string, response portal.Response) {
 	a.mu.Lock()
 	a.client, a.info = client, info
 	a.mu.Unlock()
-	a.setState(AppState{Status: "connected", Message: "已连接校园网", SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal, Account: username, Networks: networks, LastChecked: time.Now().Format("15:04:05")})
+	state := AppState{Status: "connected", Message: "已连接校园网", SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal, Account: username, Networks: networks, LastChecked: time.Now().Format("15:04:05"), AuthCode: response.AuthCode, AuthMessage: response.AuthMessage, DialCode: response.DialCode, DialMessage: response.DialMessage}
+	if response.Online != nil {
+		state.BytesIn4, state.BytesOut4, state.OnlineCount = response.Online.BytesIn4, response.Online.BytesOut4, 1
+		state.Terminals = []string{response.Online.UserMAC + " · " + response.Online.UserIPv4}
+	}
+	a.setState(state)
 }
 
 func (a *App) Logout() error {
@@ -299,7 +312,7 @@ func (a *App) refresh() {
 				if response.Online != nil && response.Online.Username != "" {
 					account = response.Online.Username
 				}
-				a.setConnected(client, info, account, networks)
+				a.setConnected(client, info, account, networks, response)
 				return
 			}
 		}
@@ -332,6 +345,14 @@ func (a *App) monitor() {
 }
 
 func (a *App) setState(state AppState) {
+	// JSON encodes nil slices as null. The Vue UI renders these collections
+	// continuously while the monitor refreshes, so always expose arrays.
+	if state.Networks == nil {
+		state.Networks = []string{}
+	}
+	if state.Terminals == nil {
+		state.Terminals = []string{}
+	}
 	a.mu.Lock()
 	a.state = state
 	a.mu.Unlock()

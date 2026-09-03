@@ -62,6 +62,14 @@ export namespace main {
 	    account: string;
 	    lastChecked: string;
 	    networks: string[];
+	    bytesIn4: number;
+	    bytesOut4: number;
+	    onlineCount: number;
+	    terminals: string[];
+	    authCode: string;
+	    authMessage: string;
+	    dialCode: string;
+	    dialMessage: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppState(source);
@@ -79,6 +87,14 @@ export namespace main {
 	        this.account = source["account"];
 	        this.lastChecked = source["lastChecked"];
 	        this.networks = source["networks"];
+	        this.bytesIn4 = source["bytesIn4"];
+	        this.bytesOut4 = source["bytesOut4"];
+	        this.onlineCount = source["onlineCount"];
+	        this.terminals = source["terminals"];
+	        this.authCode = source["authCode"];
+	        this.authMessage = source["authMessage"];
+	        this.dialCode = source["dialCode"];
+	        this.dialMessage = source["dialMessage"];
 	    }
 	}
 	export class UpdateInfo {
