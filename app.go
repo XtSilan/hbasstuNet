@@ -34,6 +34,7 @@ type App struct {
 	info          network.Info
 	allowClose    bool
 	frontendReady bool
+	sessionActive bool
 	trafficMu     sync.Mutex
 	trafficIn     uint64
 	trafficOut    uint64
@@ -217,16 +218,8 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) initialize() {
-	// Keep Wails responsive while network discovery and optional auto-login run.
+	// Discover nearby campus networks without connecting from the login page.
 	a.refresh()
-	a.mu.Lock()
-	settings := a.settings
-	a.mu.Unlock()
-	if settings.AutoLogin && settings.Username != "" && settings.Password != "" {
-		if err := a.Login(settings.Username, settings.Password, settings.Role, settings.ISP, settings.Remember); err != nil {
-			log.Printf("automatic login failed: %v", err)
-		}
-	}
 }
 
 func (a *App) State() AppState           { a.mu.Lock(); defer a.mu.Unlock(); return a.state }
@@ -334,6 +327,7 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 func (a *App) setConnected(client *portal.Client, info network.Info, username string, networks []string, response portal.Response) {
 	a.mu.Lock()
 	a.client, a.info = client, info
+	a.sessionActive = true
 	a.mu.Unlock()
 	state := AppState{Status: "connected", Message: "已连接校园网", SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal, Account: username, Networks: networks, LastChecked: time.Now().Format("15:04:05"), AuthCode: response.AuthCode, AuthMessage: response.AuthMessage, DialCode: response.DialCode, DialMessage: response.DialMessage}
 	if response.Online != nil {
@@ -361,6 +355,7 @@ func (a *App) Logout() error {
 	}
 	a.mu.Lock()
 	a.client = nil
+	a.sessionActive = false
 	a.mu.Unlock()
 	a.setState(AppState{Status: "idle", Message: "已断开校园网", SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal})
 	return err
@@ -378,6 +373,7 @@ func (a *App) refresh() {
 		}
 		a.mu.Lock()
 		a.client = nil
+		a.sessionActive = false
 		a.mu.Unlock()
 		a.setState(AppState{Status: "offline", Message: message, Networks: networks})
 		return
@@ -385,9 +381,10 @@ func (a *App) refresh() {
 	a.mu.Lock()
 	settings := a.settings
 	state := a.state
+	sessionActive := a.sessionActive
 	a.mu.Unlock()
 	state.SSID, state.Interface, state.IP, state.MAC, state.Signal, state.Networks = info.SSID, info.Interface, info.IP, info.MAC, info.Signal, networks
-	if settings.Username != "" && settings.Password != "" {
+	if sessionActive && settings.Username != "" && settings.Password != "" {
 		client, clientErr := portal.New("http://192.168.99.135", "1", net.ParseIP(info.IP))
 		if clientErr == nil {
 			ctx, cancel := context.WithTimeout(a.ctx, 8*time.Second)
@@ -420,10 +417,11 @@ func (a *App) monitor() {
 			a.mu.Lock()
 			settings := a.settings
 			state := a.state
+			sessionActive := a.sessionActive
 			a.mu.Unlock()
 			// AutoLogin controls startup behaviour; once a campus Wi-Fi is present,
 			// a lost portal session is restored automatically when credentials exist.
-			if settings.Username != "" && settings.Password != "" && state.Status == "offline" && strings.Contains(state.Message, "等待认证") {
+			if sessionActive && settings.Username != "" && settings.Password != "" && state.Status == "offline" && strings.Contains(state.Message, "等待认证") {
 				if err := a.Login(settings.Username, settings.Password, settings.Role, settings.ISP, settings.Remember); err != nil {
 					log.Printf("automatic re-authentication failed: %v", err)
 				}

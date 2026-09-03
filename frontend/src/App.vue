@@ -89,7 +89,7 @@ onMounted(async () => {
   EventsOn('navigate:settings', () => { view.value = 'settings' })
   try {
     const saved = await LoadSettings()
-    form.value = { ...form.value, ...saved }
+    form.value = { ...form.value, ...saved, role: 'student' }
     state.value = normalizeState(await State())
     if (state.value.status === 'connected') view.value = 'status'
   } catch (reason) {
@@ -119,7 +119,7 @@ async function connect() {
 async function disconnect() {
   busy.value = true
   error.value = ''
-  try { await Logout(); view.value = 'login' } catch (reason) { error.value = String(reason) } finally { busy.value = false }
+  try { await Logout(); form.value.role = 'student'; view.value = 'login' } catch (reason) { error.value = String(reason) } finally { busy.value = false }
 }
 
 async function refresh() {
@@ -188,7 +188,7 @@ async function installUpdate() {
           <Wifi :size="54" stroke-width="1.4" />
         </div>
         <div class="nearby-networks">
-          <div class="nearby-heading"><strong>附近网络</strong><span>{{ state.networks.length ? '发现可用校园网络' : '正在扫描' }}</span></div>
+          <div class="nearby-heading"><strong>附近网络</strong><button class="scan-refresh" type="button" :disabled="busy" @click="refresh"><RefreshCw :size="13" />刷新</button></div>
           <button v-for="network in state.networks" :key="network" class="network-option" :class="{ selected: form.role === (network.toLowerCase().startsWith('tercher') || network.toLowerCase().startsWith('teacher') ? 'teacher' : 'student') }" @click="form.role = network.toLowerCase().startsWith('tercher') || network.toLowerCase().startsWith('teacher') ? 'teacher' : 'student'">
             <span class="network-light"></span><Wifi :size="17" /><span>{{ network }}</span><small>可用</small>
           </button>
