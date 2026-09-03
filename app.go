@@ -211,8 +211,8 @@ func (a *App) startup(ctx context.Context) {
 		a.settings = settings
 		// The executable is portable. Refresh the Run entry on every launch so
 		// moving the single-file app and opening it once repairs the old path.
-		if settings.AutoLogin {
-			if err := startup.Set(true); err != nil {
+		if settings.AutoStart {
+			if err := startup.SyncCurrentPath(); err != nil {
 				log.Printf("sync auto login path failed: %v", err)
 			}
 		}
@@ -242,8 +242,16 @@ func (a *App) initialize() {
 	}
 }
 
-func (a *App) State() AppState           { a.mu.Lock(); defer a.mu.Unlock(); return a.state }
-func (a *App) Settings() config.Settings { a.mu.Lock(); defer a.mu.Unlock(); return a.settings }
+func (a *App) State() AppState { a.mu.Lock(); defer a.mu.Unlock(); return a.state }
+func (a *App) Settings() config.Settings {
+	a.mu.Lock()
+	settings := a.settings
+	a.mu.Unlock()
+	if enabled, err := startup.Enabled(); err == nil {
+		settings.AutoStart = enabled
+	}
+	return settings
+}
 
 func (a *App) MarkFrontendReady() {
 	a.mu.Lock()
@@ -265,12 +273,12 @@ func (a *App) SaveSettings(settings config.Settings) error {
 	a.mu.Lock()
 	a.settings = settings
 	a.mu.Unlock()
-	if err := startup.Set(settings.AutoLogin); err != nil {
-		log.Printf("set auto login enabled=%t failed: %v", settings.AutoLogin, err)
-		return fmt.Errorf("更新自动登录失败：%w", err)
+	if err := startup.Set(settings.AutoStart); err != nil {
+		log.Printf("set auto start enabled=%t failed: %v", settings.AutoStart, err)
+		return fmt.Errorf("更新开机自启动失败：%w", err)
 	}
-	log.Printf("auto login updated; enabled=%t", settings.AutoLogin)
-	log.Printf("settings saved; remember=%t autoLogin=%t role=%s", settings.Remember, settings.AutoLogin, settings.Role)
+	log.Printf("auto start updated; enabled=%t", settings.AutoStart)
+	log.Printf("settings saved; remember=%t autoLogin=%t autoStart=%t role=%s", settings.Remember, settings.AutoLogin, settings.AutoStart, settings.Role)
 	return nil
 }
 

@@ -31,7 +31,7 @@ type AboutInfo = { version: string; sha256: string; project: string; issues: str
 type UpdateInfo = { status: string; version: string; name: string; notes: string; url: string; publishedAt: string; assetUrl: string }
 
 const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园网络', ssid: '', interface: '', ip: '', mac: '', signal: '', account: '', lastChecked: '', networks: [], bytesIn4: 0, bytesOut4: 0, onlineCount: 0, terminals: [], authCode: '', authMessage: '', dialCode: '', dialMessage: '', downloadRate: 0, uploadRate: 0 })
-const form = ref({ username: '', password: '', role: 'student', isp: 'cucc', remember: true, autoLogin: false, exitBehavior: 'tray', skipExitPrompt: false })
+const form = ref({ username: '', password: '', role: 'student', isp: 'cucc', remember: true, autoLogin: false, autoStart: false, exitBehavior: 'tray', skipExitPrompt: false })
 const busy = ref(false)
 const error = ref('')
 const showPassword = ref(false)
@@ -208,6 +208,7 @@ async function installUpdate() {
           <label><span>运营商</span><select v-model="form.isp"><option value="cucc">中国联通</option><option value="cmcc">中国移动</option><option value="telecom">中国电信</option></select></label>
           <div class="preferences">
             <label class="check-row"><input v-model="form.remember" type="checkbox" @change="savePreferences" /><span><Check :size="11" /></span>保存密码</label>
+            <label class="check-row"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span><Check :size="11" /></span>自动登录</label>
           </div>
           <p v-if="error" class="error-message">{{ error }}</p>
           <button class="primary-button" type="submit" :disabled="busy || !form.username || !form.password">{{ busy ? '正在认证…' : '连接校园网' }}</button>
@@ -233,8 +234,8 @@ async function installUpdate() {
       <section class="status-content">
       <header class="about-header"><div><span class="section-label">设置</span><h1>应用设置</h1></div></header>
       <section class="settings-panel">
-        <div class="settings-row"><div><strong>自动登录</strong><span>启动后检测校园 Wi-Fi 并使用已保存账号认证</span></div><label class="switch"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span></span></label></div>
         <div class="settings-row"><div><strong>保存密码</strong><span>使用 Windows 用户凭据保护保存的密码</span></div><label class="switch"><input v-model="form.remember" type="checkbox" @change="savePreferences" /><span></span></label></div>
+        <div class="settings-row"><div><strong>开机自启动</strong><span>登录 Windows 后在后台运行 hbasstuNet</span></div><label class="switch"><input v-model="form.autoStart" type="checkbox" @change="savePreferences" /><span></span></label></div>
         <div class="settings-row"><div><strong>关闭窗口时</strong><span>选择点击右上角关闭按钮后的行为</span></div><select v-model="form.exitBehavior" @change="savePreferences"><option value="tray">最小化到系统托盘</option><option value="exit">直接退出</option></select></div>
       </section>
       </section>
