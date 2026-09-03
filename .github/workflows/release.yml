@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -61,17 +63,21 @@ jobs:
           $asset = "release/hbasstuNet-$env:RELEASE_VERSION-windows-amd64.exe"
           Copy-Item build/bin/hbasstuNet.exe $asset
           (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $asset -Leaf) | Set-Content "release/SHA256SUMS.txt"
+          $notes = git log -1 --pretty=%B $env:RELEASE_VERSION
+          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "hbasstuNet $env:RELEASE_VERSION" }
+          Set-Content -Path "release-notes.md" -Value $notes -Encoding utf8
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_VERSION }}
           name: hbasstuNet ${{ env.RELEASE_VERSION }}
-          generate_release_notes: true
+          generate_release_notes: false
+          body_path: release-notes.md
           files: release/*
 
       - name: Clean build output
         if: always()
         shell: pwsh
         run: |
-          Remove-Item -Recurse -Force build/bin, release -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force build/bin, release, release-notes.md -ErrorAction SilentlyContinue

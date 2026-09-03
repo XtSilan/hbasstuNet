@@ -108,6 +108,7 @@ export namespace main {
 	    notes: string;
 	    url: string;
 	    publishedAt: string;
+	    assetUrl: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateInfo(source);
@@ -121,6 +122,7 @@ export namespace main {
 	        this.notes = source["notes"];
 	        this.url = source["url"];
 	        this.publishedAt = source["publishedAt"];
+	        this.assetUrl = source["assetUrl"];
 	    }
 	}
 

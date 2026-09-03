@@ -18,6 +18,10 @@ export function ExitApp(arg1) {
   return window['go']['main']['App']['ExitApp'](arg1);
 }
 
+export function InstallUpdate(arg1) {
+  return window['go']['main']['App']['InstallUpdate'](arg1);
+}
+
 export function Login(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['Login'](arg1, arg2, arg3, arg4, arg5);
 }

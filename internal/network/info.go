@@ -73,6 +73,14 @@ func Connect(ssid string) (Info, error) {
 	return Info{}, fmt.Errorf("连接 %s 超时", ssid)
 }
 
+func Disconnect() error {
+	out, err := runNetsh("wlan", "disconnect")
+	if err != nil {
+		return fmt.Errorf("断开 Wi-Fi 失败：%s", commandMessage(err, out))
+	}
+	return nil
+}
+
 func addOpenProfile(ssid string) error {
 	profile := fmt.Sprintf(`<?xml version="1.0"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">

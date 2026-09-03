@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -76,6 +77,7 @@ type UpdateInfo struct {
 	Notes       string `json:"notes"`
 	URL         string `json:"url"`
 	PublishedAt string `json:"publishedAt"`
+	AssetURL    string `json:"assetUrl"`
 }
 
 // appVersion is replaced by the release workflow with the pushed tag.
@@ -122,11 +124,78 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 		Body        string `json:"body"`
 		HTMLURL     string `json:"html_url"`
 		PublishedAt string `json:"published_at"`
+		Assets      []struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		} `json:"assets"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&release); err != nil {
 		return UpdateInfo{}, fmt.Errorf("解析更新信息失败：%w", err)
 	}
-	return UpdateInfo{Status: "检查完成", Version: release.TagName, Name: release.Name, Notes: release.Body, URL: release.HTMLURL, PublishedAt: release.PublishedAt}, nil
+	assetURL := ""
+	for _, asset := range release.Assets {
+		if strings.HasSuffix(strings.ToLower(asset.Name), ".exe") {
+			assetURL = asset.URL
+			break
+		}
+	}
+	return UpdateInfo{Status: "检查完成", Version: release.TagName, Name: release.Name, Notes: release.Body, URL: release.HTMLURL, PublishedAt: release.PublishedAt, AssetURL: assetURL}, nil
+}
+
+func (a *App) InstallUpdate(assetURL string) error {
+	parsed, err := url.Parse(assetURL)
+	if err != nil || parsed.Scheme != "https" || (parsed.Host != "github.com" && parsed.Host != "objects.githubusercontent.com") {
+		return fmt.Errorf("更新地址无效")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("获取程序路径失败：%w", err)
+	}
+	temporary := executable + ".update"
+	file, err := os.Create(temporary)
+	if err != nil {
+		return fmt.Errorf("创建更新文件失败：%w", err)
+	}
+	defer file.Close()
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, assetURL, nil)
+	if err != nil {
+		os.Remove(temporary)
+		return err
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("User-Agent", "hbasstuNet/"+appVersion)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		os.Remove(temporary)
+		return fmt.Errorf("下载更新失败：%w", err)
+	}
+	if res.StatusCode != http.StatusOK {
+		res.Body.Close()
+		os.Remove(temporary)
+		return fmt.Errorf("下载更新失败：GitHub 返回 HTTP %d", res.StatusCode)
+	}
+	if _, err := io.Copy(file, res.Body); err != nil {
+		res.Body.Close()
+		os.Remove(temporary)
+		return fmt.Errorf("写入更新文件失败：%w", err)
+	}
+	res.Body.Close()
+	if err := file.Close(); err != nil {
+		os.Remove(temporary)
+		return err
+	}
+	if err := launchUpdater(temporary, executable, os.Getpid()); err != nil {
+		os.Remove(temporary)
+		return err
+	}
+	log.Printf("update downloaded; restarting from %s", temporary)
+	a.mu.Lock()
+	a.allowClose = true
+	a.mu.Unlock()
+	runtime.Quit(a.ctx)
+	return nil
 }
 
 func NewApp() *App {
@@ -278,13 +347,18 @@ func (a *App) Logout() error {
 	a.mu.Lock()
 	client, info, settings := a.client, a.info, a.settings
 	a.mu.Unlock()
-	if client == nil {
-		a.setState(AppState{Status: "idle", Message: "当前没有活动连接"})
-		return nil
+	var err error
+	if client != nil {
+		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
+		_, err = client.Logout(ctx, portal.Credentials{Username: settings.Username, IPv4: info.IP, MAC: info.MAC, ISP: settings.ISP})
+		cancel()
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
-	defer cancel()
-	_, err := client.Logout(ctx, portal.Credentials{Username: settings.Username, IPv4: info.IP, MAC: info.MAC, ISP: settings.ISP})
+	if wifiErr := network.Disconnect(); wifiErr != nil && client != nil {
+		if err == nil {
+			err = wifiErr
+		}
+		log.Printf("Wi-Fi disconnect failed: %v", wifiErr)
+	}
 	a.mu.Lock()
 	a.client = nil
 	a.mu.Unlock()
@@ -302,6 +376,9 @@ func (a *App) refresh() {
 		if scanErr != nil {
 			message = "无线网络扫描暂不可用"
 		}
+		a.mu.Lock()
+		a.client = nil
+		a.mu.Unlock()
 		a.setState(AppState{Status: "offline", Message: message, Networks: networks})
 		return
 	}
@@ -344,7 +421,9 @@ func (a *App) monitor() {
 			settings := a.settings
 			state := a.state
 			a.mu.Unlock()
-			if settings.AutoLogin && settings.Username != "" && settings.Password != "" && state.Status == "offline" && strings.Contains(state.Message, "等待认证") {
+			// AutoLogin controls startup behaviour; once a campus Wi-Fi is present,
+			// a lost portal session is restored automatically when credentials exist.
+			if settings.Username != "" && settings.Password != "" && state.Status == "offline" && strings.Contains(state.Message, "等待认证") {
 				if err := a.Login(settings.Username, settings.Password, settings.Role, settings.ISP, settings.Remember); err != nil {
 					log.Printf("automatic re-authentication failed: %v", err)
 				}

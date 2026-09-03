@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Activity, Check, CircleHelp, Eye, EyeOff, ExternalLink, Github, LogOut, RefreshCw, Settings as SettingsIcon, ShieldCheck, Wifi, X } from 'lucide-vue-next'
-import { About, CheckUpdate, Login, Logout, MarkFrontendReady, Refresh, SaveSettings, Settings as LoadSettings, State, CloseToTray, ExitApp } from '../wailsjs/go/main/App'
+import { About, CheckUpdate, InstallUpdate, Login, Logout, MarkFrontendReady, Refresh, SaveSettings, Settings as LoadSettings, State, CloseToTray, ExitApp } from '../wailsjs/go/main/App'
 import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime'
 
 type NetworkState = {
@@ -28,7 +28,7 @@ type NetworkState = {
 }
 
 type AboutInfo = { version: string; sha256: string; project: string; issues: string }
-type UpdateInfo = { status: string; version: string; name: string; notes: string; url: string; publishedAt: string }
+type UpdateInfo = { status: string; version: string; name: string; notes: string; url: string; publishedAt: string; assetUrl: string }
 
 const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园网络', ssid: '', interface: '', ip: '', mac: '', signal: '', account: '', lastChecked: '', networks: [], bytesIn4: 0, bytesOut4: 0, onlineCount: 0, terminals: [], authCode: '', authMessage: '', dialCode: '', dialMessage: '', downloadRate: 0, uploadRate: 0 })
 const form = ref({ username: '', password: '', role: 'student', isp: 'cucc', remember: true, autoLogin: false, exitBehavior: 'tray', skipExitPrompt: false })
@@ -40,7 +40,8 @@ const closeOpen = ref(false)
 const closeRemember = ref(false)
 const about = ref<AboutInfo>({ version: '0.1.0', sha256: '', project: 'https://github.com/XtSilan/hbasstuNet', issues: 'https://github.com/XtSilan/hbasstuNet/issues' })
 const updateStatus = ref('')
-const update = ref<UpdateInfo>({ status: '', version: '', name: '', notes: '', url: '', publishedAt: '' })
+const update = ref<UpdateInfo>({ status: '', version: '', name: '', notes: '', url: '', publishedAt: '', assetUrl: '' })
+const installingUpdate = ref(false)
 const rateHistory = ref<number[]>(Array.from({ length: 48 }, () => 0))
 let rateTimer: number | undefined
 let stopEvents: (() => void) | undefined
@@ -79,7 +80,11 @@ function normalizeState(next: Partial<NetworkState> | null | undefined): Network
 
 onMounted(async () => {
   await MarkFrontendReady()
-  stopEvents = EventsOn('state:changed', (next: NetworkState) => { state.value = normalizeState(next) })
+  stopEvents = EventsOn('state:changed', (next: NetworkState) => {
+    const normalized = normalizeState(next)
+    state.value = normalized
+    if (normalized.status === 'offline' && !normalized.ssid && view.value !== 'login') view.value = 'login'
+  })
   EventsOn('close:requested', () => { closeOpen.value = true })
   EventsOn('navigate:settings', () => { view.value = 'settings' })
   try {
@@ -114,7 +119,7 @@ async function connect() {
 async function disconnect() {
   busy.value = true
   error.value = ''
-  try { await Logout() } catch (reason) { error.value = String(reason) } finally { busy.value = false }
+  try { await Logout(); view.value = 'login' } catch (reason) { error.value = String(reason) } finally { busy.value = false }
 }
 
 async function refresh() {
@@ -148,6 +153,18 @@ async function checkUpdates() {
     update.value = await CheckUpdate()
     updateStatus.value = update.value.version ? `最新版本 ${update.value.version}` : update.value.status
   } catch (reason) {
+    updateStatus.value = String(reason).replace(/^Error:\s*/, '')
+  }
+}
+
+async function installUpdate() {
+  if (!update.value.assetUrl) return
+  installingUpdate.value = true
+  updateStatus.value = '正在下载更新…'
+  try {
+    await InstallUpdate(update.value.assetUrl)
+  } catch (reason) {
+    installingUpdate.value = false
     updateStatus.value = String(reason).replace(/^Error:\s*/, '')
   }
 }
@@ -232,7 +249,7 @@ async function checkUpdates() {
         <dl class="about-details"><div><dt>版本</dt><dd>v{{ about.version }}</dd></div><div><dt>SHA-256</dt><dd class="hash">{{ about.sha256 || '正在计算…' }}</dd></div><div><dt>项目地址</dt><dd>{{ about.project.replace('https://', '') }}</dd></div></dl>
         <div class="about-actions"><button class="secondary-button" @click="openProject"><Github :size="15" />打开项目主页</button><button class="secondary-button" @click="openIssues"><ExternalLink :size="15" />反馈问题</button></div>
       </section>
-      <section class="update-panel"><div class="update-heading"><div><span class="section-label">更新</span><h2>GitHub Release 更新</h2></div><span class="current-version">当前版本 v{{ about.version }}</span></div><p>获取最新版本和发布说明。</p><div v-if="updateStatus" class="release-notes"><strong>{{ update.name || update.version || update.status }}</strong><span>{{ update.notes || '暂无发布说明' }}</span></div><div class="update-actions"><button class="update-button" @click="checkUpdates"><RefreshCw :size="15" />检查更新</button><button v-if="update.url" class="secondary-button" @click="BrowserOpenURL(update.url)"><ExternalLink :size="15" />查看发布页</button><span v-if="updateStatus" class="update-status">{{ updateStatus }}</span></div></section>
+      <section class="update-panel"><div class="update-heading"><div><span class="section-label">更新</span><h2>GitHub Release 更新</h2></div><span class="current-version">当前版本 v{{ about.version }}</span></div><p>获取最新版本和发布说明。</p><div v-if="updateStatus" class="release-notes"><strong>{{ update.name || update.version || update.status }}</strong><span>{{ update.notes || '暂无发布说明' }}</span></div><div class="update-actions"><button class="update-button" @click="checkUpdates" :disabled="installingUpdate"><RefreshCw :size="15" />检查更新</button><button v-if="update.assetUrl" class="update-button" @click="installUpdate" :disabled="installingUpdate"><ExternalLink :size="15" />{{ installingUpdate ? '正在安装…' : '下载并安装' }}</button><button v-if="update.url" class="secondary-button" @click="BrowserOpenURL(update.url)"><ExternalLink :size="15" />查看发布页</button><span v-if="updateStatus" class="update-status">{{ updateStatus }}</span></div></section>
       </section>
     </section>
 
