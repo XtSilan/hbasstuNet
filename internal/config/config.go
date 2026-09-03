@@ -12,7 +12,11 @@ type Settings struct {
 	Role      string `json:"role"`
 	ISP       string `json:"isp"`
 	Remember  bool   `json:"remember"`
-	AutoStart bool   `json:"autoStart"`
+	AutoLogin bool   `json:"autoLogin"`
+	// AutoStart is kept for reading settings written by versions before 0.2.
+	AutoStart      bool   `json:"autoStart,omitempty"`
+	ExitBehavior   string `json:"exitBehavior"`
+	SkipExitPrompt bool   `json:"skipExitPrompt"`
 }
 
 func Path() string {
@@ -39,6 +43,12 @@ func Load(path string) (Settings, error) {
 	}
 	if settings.ISP == "" {
 		settings.ISP = "cucc"
+	}
+	if !settings.AutoLogin && settings.AutoStart {
+		settings.AutoLogin = true
+	}
+	if settings.ExitBehavior != "exit" {
+		settings.ExitBehavior = "tray"
 	}
 	if !settings.Remember {
 		settings.Password = ""

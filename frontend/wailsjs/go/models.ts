@@ -1,17 +1,20 @@
 export namespace config {
-	
+
 	export class Settings {
 	    username: string;
 	    password: string;
 	    role: string;
 	    isp: string;
 	    remember: boolean;
-	    autoStart: boolean;
-	
+	    autoLogin: boolean;
+	    autoStart?: boolean;
+	    exitBehavior: string;
+	    skipExitPrompt: boolean;
+
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.username = source["username"];
@@ -19,14 +22,35 @@ export namespace config {
 	        this.role = source["role"];
 	        this.isp = source["isp"];
 	        this.remember = source["remember"];
+	        this.autoLogin = source["autoLogin"];
 	        this.autoStart = source["autoStart"];
+	        this.exitBehavior = source["exitBehavior"];
+	        this.skipExitPrompt = source["skipExitPrompt"];
 	    }
 	}
 
 }
 
 export namespace main {
-	
+
+	export class AboutInfo {
+	    version: string;
+	    sha256: string;
+	    project: string;
+	    issues: string;
+
+	    static createFrom(source: any = {}) {
+	        return new AboutInfo(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.sha256 = source["sha256"];
+	        this.project = source["project"];
+	        this.issues = source["issues"];
+	    }
+	}
 	export class AppState {
 	    status: string;
 	    message: string;
@@ -38,11 +62,11 @@ export namespace main {
 	    account: string;
 	    lastChecked: string;
 	    networks: string[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new AppState(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];
@@ -55,6 +79,28 @@ export namespace main {
 	        this.account = source["account"];
 	        this.lastChecked = source["lastChecked"];
 	        this.networks = source["networks"];
+	    }
+	}
+	export class UpdateInfo {
+	    status: string;
+	    version: string;
+	    name: string;
+	    notes: string;
+	    url: string;
+	    publishedAt: string;
+
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfo(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.version = source["version"];
+	        this.name = source["name"];
+	        this.notes = source["notes"];
+	        this.url = source["url"];
+	        this.publishedAt = source["publishedAt"];
 	    }
 	}
 

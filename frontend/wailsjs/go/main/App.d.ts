@@ -3,6 +3,14 @@
 import {main} from '../models';
 import {config} from '../models';
 
+export function About():Promise<main.AboutInfo>;
+
+export function CheckUpdate():Promise<main.UpdateInfo>;
+
+export function CloseToTray(arg1:boolean):Promise<void>;
+
+export function ExitApp(arg1:boolean):Promise<void>;
+
 export function Login(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
 
 export function Logout():Promise<void>;
