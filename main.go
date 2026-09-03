@@ -14,6 +14,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -28,6 +29,7 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 	background := slices.Contains(os.Args[1:], "--background")
+	app.background = background
 	// Keep WebView2 data separate from older builds whose cached renderer could
 	// leave a blank surface after an update.
 	webviewDataPath := filepath.Join(os.Getenv("APPDATA"), "hbasstuNet", "webview2")
@@ -57,6 +59,14 @@ func main() {
 		OnStartup:     app.startup,
 		OnShutdown:    func(context.Context) { app.stopTray() },
 		OnBeforeClose: app.beforeClose,
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "hbasstuNet-single-instance",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx != nil {
+					runtime.WindowShow(app.ctx)
+				}
+			},
+		},
 		OnDomReady: func(context.Context) {
 			log.Printf("frontend DOM ready")
 		},

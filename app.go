@@ -35,6 +35,7 @@ type App struct {
 	allowClose    bool
 	frontendReady bool
 	sessionActive bool
+	background    bool
 	trafficMu     sync.Mutex
 	trafficIn     uint64
 	trafficOut    uint64
@@ -205,6 +206,7 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	initToast()
 	if settings, err := config.Load(a.configPath); err == nil {
 		a.settings = settings
 	} else {
@@ -220,6 +222,17 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) initialize() {
 	// Discover nearby campus networks without connecting from the login page.
 	a.refresh()
+	if !a.background {
+		return
+	}
+	a.mu.Lock()
+	settings := a.settings
+	a.mu.Unlock()
+	if settings.AutoLogin && settings.Username != "" && settings.Password != "" {
+		if err := a.Login(settings.Username, settings.Password, settings.Role, settings.ISP, settings.Remember); err != nil {
+			log.Printf("background automatic login failed: %v", err)
+		}
+	}
 }
 
 func (a *App) State() AppState           { a.mu.Lock(); defer a.mu.Unlock(); return a.state }
@@ -326,6 +339,7 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 
 func (a *App) setConnected(client *portal.Client, info network.Info, username string, networks []string, response portal.Response) {
 	a.mu.Lock()
+	wasConnected := a.state.Status == "connected"
 	a.client, a.info = client, info
 	a.sessionActive = true
 	a.mu.Unlock()
@@ -335,11 +349,15 @@ func (a *App) setConnected(client *portal.Client, info network.Info, username st
 		state.Terminals = []string{response.Online.UserMAC + " · " + response.Online.UserIPv4}
 	}
 	a.setState(state)
+	if !wasConnected {
+		showToast("已连接校园网", info.SSID+" · "+username)
+	}
 }
 
 func (a *App) Logout() error {
 	a.mu.Lock()
 	client, info, settings := a.client, a.info, a.settings
+	wasConnected := a.state.Status == "connected" || client != nil
 	a.mu.Unlock()
 	var err error
 	if client != nil {
@@ -358,6 +376,9 @@ func (a *App) Logout() error {
 	a.sessionActive = false
 	a.mu.Unlock()
 	a.setState(AppState{Status: "idle", Message: "已断开校园网", SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal})
+	if wasConnected {
+		showToast("已断开校园网", "校园网连接已断开")
+	}
 	return err
 }
 
