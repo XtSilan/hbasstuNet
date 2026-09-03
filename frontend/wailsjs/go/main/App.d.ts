@@ -15,6 +15,8 @@ export function Login(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boole
 
 export function Logout():Promise<void>;
 
+export function MarkFrontendReady():Promise<void>;
+
 export function Refresh():Promise<main.AppState>;
 
 export function SaveSettings(arg1:config.Settings):Promise<void>;

@@ -1,5 +1,5 @@
 export namespace config {
-
+	
 	export class Settings {
 	    username: string;
 	    password: string;
@@ -10,11 +10,11 @@ export namespace config {
 	    autoStart?: boolean;
 	    exitBehavior: string;
 	    skipExitPrompt: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.username = source["username"];
@@ -32,17 +32,17 @@ export namespace config {
 }
 
 export namespace main {
-
+	
 	export class AboutInfo {
 	    version: string;
 	    sha256: string;
 	    project: string;
 	    issues: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new AboutInfo(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.version = source["version"];
@@ -62,11 +62,11 @@ export namespace main {
 	    account: string;
 	    lastChecked: string;
 	    networks: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new AppState(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];
@@ -88,11 +88,11 @@ export namespace main {
 	    notes: string;
 	    url: string;
 	    publishedAt: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new UpdateInfo(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];

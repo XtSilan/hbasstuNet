@@ -24,14 +24,15 @@ import (
 )
 
 type App struct {
-	ctx        context.Context
-	mu         sync.Mutex
-	settings   config.Settings
-	configPath string
-	state      AppState
-	client     *portal.Client
-	info       network.Info
-	allowClose bool
+	ctx           context.Context
+	mu            sync.Mutex
+	settings      config.Settings
+	configPath    string
+	state         AppState
+	client        *portal.Client
+	info          network.Info
+	allowClose    bool
+	frontendReady bool
 }
 
 type AppState struct {
@@ -130,6 +131,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) initialize() {
+	// Keep Wails responsive while network discovery and optional auto-login run.
 	a.refresh()
 	a.mu.Lock()
 	settings := a.settings
@@ -143,6 +145,12 @@ func (a *App) initialize() {
 
 func (a *App) State() AppState           { a.mu.Lock(); defer a.mu.Unlock(); return a.state }
 func (a *App) Settings() config.Settings { a.mu.Lock(); defer a.mu.Unlock(); return a.settings }
+
+func (a *App) MarkFrontendReady() {
+	a.mu.Lock()
+	a.frontendReady = true
+	a.mu.Unlock()
+}
 
 func (a *App) SaveSettings(settings config.Settings) error {
 	if settings.Role != "student" && settings.Role != "teacher" {
@@ -339,6 +347,10 @@ func (a *App) beforeClose(ctx context.Context) bool {
 		a.mu.Unlock()
 		return false
 	}
+	if !a.frontendReady {
+		a.mu.Unlock()
+		return false
+	}
 	settings := a.settings
 	a.mu.Unlock()
 	if settings.SkipExitPrompt {
@@ -349,7 +361,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 		return true
 	}
 	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "close:requested")
+		go runtime.EventsEmit(a.ctx, "close:requested")
 	}
 	return true
 }

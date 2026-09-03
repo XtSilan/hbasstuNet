@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ArrowLeft, Check, CircleHelp, Eye, EyeOff, ExternalLink, Github, LogOut, RefreshCw, Settings as SettingsIcon, ShieldCheck, Wifi } from 'lucide-vue-next'
-import { About, CheckUpdate, Login, Logout, Refresh, SaveSettings, Settings as LoadSettings, State, CloseToTray, ExitApp } from '../wailsjs/go/main/App'
+import { About, CheckUpdate, Login, Logout, MarkFrontendReady, Refresh, SaveSettings, Settings as LoadSettings, State, CloseToTray, ExitApp } from '../wailsjs/go/main/App'
 import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime'
 
 type NetworkState = {
@@ -38,6 +38,7 @@ const connected = computed(() => state.value.status === 'connected')
 const stateName = computed(() => ({ connected: '已连接', connecting: '正在认证', offline: '未连接校园网', error: '认证失败', idle: '等待连接' }[state.value.status] ?? '等待连接'))
 
 onMounted(async () => {
+  await MarkFrontendReady()
   stopEvents = EventsOn('state:changed', (next: NetworkState) => { state.value = next })
   EventsOn('close:requested', () => { closeOpen.value = true })
   EventsOn('navigate:settings', () => { settingsOpen.value = true; aboutOpen.value = false })

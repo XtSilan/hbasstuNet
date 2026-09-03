@@ -26,6 +26,10 @@ export function Logout() {
   return window['go']['main']['App']['Logout']();
 }
 
+export function MarkFrontendReady() {
+  return window['go']['main']['App']['MarkFrontendReady']();
+}
+
 export function Refresh() {
   return window['go']['main']['App']['Refresh']();
 }
