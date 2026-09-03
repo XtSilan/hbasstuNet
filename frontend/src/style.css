@@ -214,6 +214,12 @@ input::placeholder { color: #6f747a; }
 .switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: #6f747a; transition: .16s; }
 .switch input:checked + span { border-color: #2ea8ff; background: #2ea8ff; }
 .switch input:checked + span::after { transform: translateX(16px); background: #07121a; }
+.spotlight-layer { position: fixed; inset: 0; z-index: 20; background: transparent; }
+.spotlight-hole { position: fixed; border: 1px solid #2ea8ff; border-radius: 4px; box-shadow: 0 0 0 9999px #111213b8, 0 0 0 3px #2ea8ff2e; pointer-events: none; }
+.spotlight-card { position: fixed; right: 32px; bottom: 32px; width: min(340px, calc(100vw - 36px)); padding: 18px; border: 1px solid #2ea8ff; border-radius: 4px; background: #1d1f21; box-shadow: 0 14px 36px #0009; }
+.spotlight-card strong { color: #e7e8ea; font-size: 14px; font-weight: 500; }
+.spotlight-card p { margin: 9px 0 15px; color: #a1a5aa; font-size: 11px; line-height: 1.6; }
+.spotlight-card .primary-button { width: auto; padding: 8px 18px; }
 .modal-backdrop { position: fixed; inset: 0; display: grid; place-items: center; background: #111213cc; z-index: 10; }
 .close-dialog { width: min(390px, calc(100vw - 40px)); padding: 24px; border: 1px solid #33363a; border-radius: 4px; background: #1d1f21; box-shadow: 0 18px 45px #0008; }
 .close-dialog h2 { margin: 0; font-size: 17px; font-weight: 500; }

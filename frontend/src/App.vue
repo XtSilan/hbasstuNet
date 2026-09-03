@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { Activity, Check, CircleHelp, Eye, EyeOff, ExternalLink, Github, LogOut, RefreshCw, Settings as SettingsIcon, ShieldCheck, Wifi, X } from 'lucide-vue-next'
 import { About, CheckUpdate, InstallUpdate, Login, Logout, MarkFrontendReady, Refresh, SaveSettings, Settings as LoadSettings, State, CloseToTray, ExitApp } from '../wailsjs/go/main/App'
 import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime'
@@ -34,6 +34,9 @@ const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园�
 const form = ref({ username: '', password: '', role: 'student', isp: 'cucc', remember: true, autoLogin: false, autoStart: false, exitBehavior: 'tray', skipExitPrompt: false })
 const busy = ref(false)
 const autoLoginPending = ref(false)
+const showAutoLoginHint = ref(false)
+const autoLoginSetting = ref<HTMLElement | null>(null)
+const spotlightStyle = ref<Record<string, string>>({})
 const error = ref('')
 const showPassword = ref(false)
 const view = ref<'login' | 'status' | 'traffic' | 'settings' | 'about'>('login')
@@ -143,8 +146,22 @@ async function refresh() {
   try { state.value = normalizeState(await Refresh()) } catch (reason) { error.value = String(reason).replace(/^Error:\s*/, '') }
 }
 
-async function savePreferences() {
-  try { await SaveSettings(form.value) } catch (reason) { error.value = String(reason) }
+async function savePreferences(): Promise<boolean> {
+  try { await SaveSettings(form.value); return true } catch (reason) { error.value = String(reason); return false }
+}
+
+async function onAutoStartChange() {
+  if (!await savePreferences() || !form.value.autoStart) return
+  await nextTick()
+  const target = autoLoginSetting.value?.getBoundingClientRect()
+  if (!target) return
+  spotlightStyle.value = {
+    left: `${Math.max(18, target.left - 10)}px`,
+    top: `${Math.max(18, target.top - 10)}px`,
+    width: `${target.width + 20}px`,
+    height: `${target.height + 20}px`,
+  }
+  showAutoLoginHint.value = true
 }
 
 async function closeToTray() {
@@ -252,8 +269,8 @@ async function installUpdate() {
       <header class="about-header"><div><span class="section-label">设置</span><h1>应用设置</h1></div></header>
       <section class="settings-panel">
         <div class="settings-row"><div><strong>保存密码</strong><span>使用 Windows 用户凭据保护保存的密码</span></div><label class="switch"><input v-model="form.remember" type="checkbox" @change="savePreferences" /><span></span></label></div>
-        <div class="settings-row"><div><strong>自动登录</strong><span>启动后发现校园 Wi-Fi 后使用已保存账号认证</span><small class="setting-hint">开启开机自启动后建议开启自动登录，以便直接连接校园网</small></div><label class="switch"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span></span></label></div>
-        <div class="settings-row"><div><strong>开机自启动</strong><span>登录 Windows 后在后台运行 hbasstuNet</span></div><label class="switch"><input v-model="form.autoStart" type="checkbox" @change="savePreferences" /><span></span></label></div>
+        <div ref="autoLoginSetting" class="settings-row"><div><strong>自动登录</strong><span>启动后发现校园 Wi-Fi 后使用已保存账号认证</span><small class="setting-hint">开启开机自启动后建议开启自动登录，以便直接连接校园网</small></div><label class="switch"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span></span></label></div>
+        <div class="settings-row"><div><strong>开机自启动</strong><span>登录 Windows 后在后台运行 hbasstuNet</span></div><label class="switch"><input v-model="form.autoStart" type="checkbox" @change="onAutoStartChange" /><span></span></label></div>
         <div class="settings-row"><div><strong>关闭窗口时</strong><span>选择点击右上角关闭按钮后的行为</span></div><select v-model="form.exitBehavior" @change="savePreferences"><option value="tray">最小化到系统托盘</option><option value="exit">直接退出</option></select></div>
       </section>
       </section>
@@ -271,6 +288,15 @@ async function installUpdate() {
       <section class="update-panel"><div class="update-heading"><div><span class="section-label">更新</span><h2>GitHub Release 更新</h2></div><span class="current-version">当前版本 v{{ about.version }}</span></div><p>获取最新版本和发布说明。</p><div v-if="updateStatus" class="release-notes"><strong>{{ update.name || update.version || update.status }}</strong><span>{{ update.notes || '暂无发布说明' }}</span></div><div class="update-actions"><button class="update-button" @click="checkUpdates" :disabled="installingUpdate"><RefreshCw :size="15" />检查更新</button><button v-if="update.assetUrl" class="update-button" @click="installUpdate" :disabled="installingUpdate"><ExternalLink :size="15" />{{ installingUpdate ? '正在安装…' : '下载并安装' }}</button><button v-if="update.url" class="secondary-button" @click="BrowserOpenURL(update.url)"><ExternalLink :size="15" />查看发布页</button><span v-if="updateStatus" class="update-status">{{ updateStatus }}</span></div></section>
       </section>
     </section>
+
+    <div v-if="showAutoLoginHint" class="spotlight-layer" @click.stop>
+      <div class="spotlight-hole" :style="spotlightStyle"></div>
+      <section class="spotlight-card">
+        <strong>建议开启自动登录</strong>
+        <p>开启开机自启动后建议开启自动登录，以便直接连接校园网</p>
+        <button class="primary-button" type="button" @click="showAutoLoginHint = false">我知道了</button>
+      </section>
+    </div>
 
     <div v-if="closeOpen" class="modal-backdrop"><section class="close-dialog"><button class="dialog-close" title="取消" @click="closeOpen = false"><X :size="16" /></button><h2>关闭 hbasstuNet</h2><p>请选择关闭窗口后的操作。</p><div class="close-actions"><button class="secondary-button" @click="closeToTray">最小化到托盘</button><button class="danger-button" @click="exitApp">直接退出</button></div><label class="check-row"><input v-model="closeRemember" type="checkbox" /><span><Check :size="11" /></span>下次不再提示</label></section></div>
   </main>
