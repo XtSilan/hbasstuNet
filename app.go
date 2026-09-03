@@ -35,7 +35,6 @@ type App struct {
 	allowClose    bool
 	frontendReady bool
 	sessionActive bool
-	background    bool
 	trafficMu     sync.Mutex
 	trafficIn     uint64
 	trafficOut    uint64
@@ -227,11 +226,9 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) initialize() {
-	// Discover nearby campus networks without connecting from the login page.
+	// Discover nearby campus networks, then optionally authenticate with saved
+	// credentials when automatic login is enabled.
 	a.refresh()
-	if !a.background {
-		return
-	}
 	a.mu.Lock()
 	settings := a.settings
 	a.mu.Unlock()

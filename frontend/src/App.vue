@@ -97,7 +97,7 @@ onMounted(async () => {
     form.value = { ...form.value, ...saved, role: 'student' }
     state.value = normalizeState(await State())
     if (state.value.status === 'connected') view.value = 'status'
-    autoLoginPending.value = form.value.autoLogin && !!form.value.username && !!form.value.password && (state.value.status === 'connecting')
+    autoLoginPending.value = form.value.autoLogin && !!form.value.username && !!form.value.password && state.value.status !== 'connected'
     if (autoLoginPending.value) window.setTimeout(() => { autoLoginPending.value = false }, 60000)
   } catch (reason) {
     error.value = `初始化失败：${String(reason).replace(/^Error:\s*/, '')}`
@@ -205,7 +205,7 @@ async function installUpdate() {
           <Wifi :size="54" stroke-width="1.4" />
         </div>
         <div class="nearby-networks">
-          <div class="nearby-heading"><strong>附近网络</strong><button class="scan-refresh" type="button" :disabled="busy" @click="refresh"><RefreshCw :size="13" />刷新</button></div>
+          <div class="nearby-heading"><strong>附近网络</strong><button class="scan-refresh" type="button" :disabled="busy || autoLoginPending" @click="refresh"><RefreshCw :size="13" />刷新</button></div>
           <button v-for="network in state.networks" :key="network" class="network-option" :class="{ selected: form.role === (network.toLowerCase().startsWith('tercher') || network.toLowerCase().startsWith('teacher') ? 'teacher' : 'student') }" @click="form.role = network.toLowerCase().startsWith('tercher') || network.toLowerCase().startsWith('teacher') ? 'teacher' : 'student'">
             <span class="network-light"></span><Wifi :size="17" /><span>{{ network }}</span><small>可用</small>
           </button>
@@ -252,7 +252,7 @@ async function installUpdate() {
       <header class="about-header"><div><span class="section-label">设置</span><h1>应用设置</h1></div></header>
       <section class="settings-panel">
         <div class="settings-row"><div><strong>保存密码</strong><span>使用 Windows 用户凭据保护保存的密码</span></div><label class="switch"><input v-model="form.remember" type="checkbox" @change="savePreferences" /><span></span></label></div>
-        <div class="settings-row"><div><strong>自动登录</strong><span>启动后发现校园 Wi-Fi 后使用已保存账号认证</span></div><label class="switch"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span></span></label></div>
+        <div class="settings-row"><div><strong>自动登录</strong><span>启动后发现校园 Wi-Fi 后使用已保存账号认证</span><small class="setting-hint">开启开机自启动后建议开启自动登录，以便直接连接校园网</small></div><label class="switch"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span></span></label></div>
         <div class="settings-row"><div><strong>开机自启动</strong><span>登录 Windows 后在后台运行 hbasstuNet</span></div><label class="switch"><input v-model="form.autoStart" type="checkbox" @change="savePreferences" /><span></span></label></div>
         <div class="settings-row"><div><strong>关闭窗口时</strong><span>选择点击右上角关闭按钮后的行为</span></div><select v-model="form.exitBehavior" @change="savePreferences"><option value="tray">最小化到系统托盘</option><option value="exit">直接退出</option></select></div>
       </section>

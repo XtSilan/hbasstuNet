@@ -206,6 +206,7 @@ input::placeholder { color: #6f747a; }
 .settings-row div { display: grid; gap: 6px; }
 .settings-row strong { color: #e7e8ea; font-size: 13px; font-weight: 500; }
 .settings-row div span { color: #6f747a; font-size: 11px; }
+.settings-row div .setting-hint { color: #6f747a; font-size: 10px; }
 .settings-row select { width: 190px; }
 .switch { position: relative; width: 36px; height: 20px; flex: 0 0 auto; }
 .switch input { position: absolute; opacity: 0; width: 1px; }
