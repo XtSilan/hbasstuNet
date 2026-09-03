@@ -119,6 +119,8 @@ git push origin v1.0.0
 
 标签会注入程序版本信息，软件“关于”页面会显示对应版本；“检查更新”会读取仓库最新 Release 的标签和发布说明。Release 正文取自该 tag 指向提交的提交说明，不会自动追加 GitHub 的 Full Changelog。Release 工作流不使用 `actions/upload-artifact`，构建目录只存在于临时 runner，发布完成后还会显式清理 `build/bin` 和 `release`。GitHub 托管 runner 在任务结束后也会销毁，因此不需要手动删除 runner 文件；需要注意的是，GitHub Release 资产会长期保留并计入仓库的 Release 存储。
 
+程序为单文件便携版。若移动了 exe，先从新位置手动启动一次；程序会检测并同步 Windows 启动项到当前路径，之后开机启动将继续有效。
+
 ## 🖥️ 使用方式
 
 1. 启动 hbasstuNet，应用会扫描附近的 `Student-XYW` 或 `Tercher-XYW` 网络。

@@ -209,6 +209,13 @@ func (a *App) startup(ctx context.Context) {
 	initToast()
 	if settings, err := config.Load(a.configPath); err == nil {
 		a.settings = settings
+		// The executable is portable. Refresh the Run entry on every launch so
+		// moving the single-file app and opening it once repairs the old path.
+		if settings.AutoLogin {
+			if err := startup.Set(true); err != nil {
+				log.Printf("sync auto login path failed: %v", err)
+			}
+		}
 	} else {
 		log.Printf("load settings failed: %v", err)
 	}
