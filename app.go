@@ -78,10 +78,12 @@ type UpdateInfo struct {
 	PublishedAt string `json:"publishedAt"`
 }
 
-const appVersion = "0.1.0"
+// appVersion is replaced by the release workflow with the pushed tag.
+// Keeping a development default makes local builds self-describing.
+var appVersion = "0.1.0-dev"
 
 func (a *App) About() AboutInfo {
-	info := AboutInfo{Version: appVersion, Project: "https://github.com/XtSilan/hbasstuNet", Issues: "https://github.com/XtSilan/hbasstuNet/issues"}
+	info := AboutInfo{Version: strings.TrimPrefix(appVersion, "v"), Project: "https://github.com/XtSilan/hbasstuNet", Issues: "https://github.com/XtSilan/hbasstuNet/issues"}
 	if executable, err := os.Executable(); err == nil {
 		if file, err := os.Open(executable); err == nil {
 			hash := sha256.New()

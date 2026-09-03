@@ -108,6 +108,17 @@ npm run build --prefix frontend
 > [!TIP]
 > `go test` 和前端构建可以在不连接校园网的环境中运行；实际 Portal 登录只能在有权限的校园网络中验证。
 
+## 🚀 发布与自动构建
+
+普通提交和 Pull Request 只运行 Go 测试、静态检查与前端构建，不会上传 Actions artifact。推送以 `v` 开头的语义化版本标签时，GitHub Actions 会在 Windows runner 上完成检查、Wails 编译、SHA-256 校验，并将 exe 与校验文件直接发布到 GitHub Release：
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+标签会注入程序版本信息，软件“关于”页面会显示对应版本；“检查更新”会读取仓库最新 Release 的标签和发布说明。Release 工作流不使用 `actions/upload-artifact`，构建目录只存在于临时 runner，发布完成后还会显式清理 `build/bin` 和 `release`。GitHub 托管 runner 在任务结束后也会销毁，因此不需要手动删除 runner 文件；需要注意的是，GitHub Release 资产会长期保留并计入仓库的 Release 存储。
+
 ## 🖥️ 使用方式
 
 1. 启动 hbasstuNet，应用会扫描附近的 `Student-XYW` 或 `Tercher-XYW` 网络。
