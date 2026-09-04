@@ -284,9 +284,13 @@ async function installUpdate() {
       <section class="about-panel">
         <div class="about-brand"><img src="./assets/images/campus.svg" alt="" /><div><strong>hbasstuNet</strong><span>湖北文理学院理工学院校园网登录器</span></div></div>
         <dl class="about-details"><div><dt>版本</dt><dd>v{{ about.version }}</dd></div><div><dt>SHA-256</dt><dd class="hash">{{ about.sha256 || '正在计算…' }}</dd></div><div><dt>项目地址</dt><dd>{{ about.project.replace('https://', '') }}</dd></div></dl>
-        <div class="about-actions"><button class="secondary-button" @click="openProject"><Github :size="15" />打开项目主页</button><button class="secondary-button" @click="openIssues"><ExternalLink :size="15" />反馈问题</button></div>
+        <div class="about-actions">
+          <!-- 修改点：添加 title 属性 -->
+          <button class="secondary-button" @click="openProject" title="好用的话给我们一个star吧"><Github :size="15" />打开项目主页</button>
+          <button class="secondary-button" @click="openIssues"><ExternalLink :size="15" />反馈问题</button>
+        </div>
       </section>
-      <section class="update-panel"><div class="update-heading"><div><span class="section-label">更新</span><h2>GitHub Release 更新</h2></div><span class="current-version">当前版本 v{{ about.version }}</span></div><p>获取最新版本和发布说明。</p><div v-if="updateStatus" class="release-notes"><strong>{{ update.name || update.version || update.status }}</strong><span>{{ update.notes || '暂无发布说明' }}</span></div><div class="update-actions"><button class="update-button" @click="checkUpdates" :disabled="installingUpdate"><RefreshCw :size="15" />检查更新</button><button v-if="update.assetUrl" class="update-button" @click="installUpdate" :disabled="installingUpdate"><ExternalLink :size="15" />{{ installingUpdate ? '正在安装…' : '下载并安装' }}</button><button v-if="update.url" class="secondary-button" @click="BrowserOpenURL(update.url)"><ExternalLink :size="15" />查看发布页</button><span v-if="updateStatus" class="update-status">{{ updateStatus }}</span></div></section>
+      <section class="update-panel"><div class="update-heading"><div><span class="section-label">更新</span><h2>GitHub Release 更新</h2></div><span class="current-version">当前版本 v{{ about.version }}</span></div><p>获取最新版本和发布说明。</p><div v-if="updateStatus" class="release-notes"><strong>{{ update.name || update.version || update.status }}</strong><span>{{ update.notes || '暂无发布说明' }}</span></div><div class="update-actions"><button class="update-button" @click="checkUpdates" :disabled="installingUpdate"><RefreshCw :size="15" />检查更新</button><button v-if="update.assetUrl" class="update-button" @click="installUpdate" :disabled="installingUpdate"><ExternalLink :size="15" />{{ installingUpdate ? '正在安装…' : '下载并安装' }}</button><button v-if="update.url" class="secondary-button" @click="BrowserOpenURL(update.url)" title="查看发布页"><ExternalLink :size="15" /></button><span v-if="updateStatus" class="update-status">{{ updateStatus }}</span></div></section>
       </section>
     </section>
 
