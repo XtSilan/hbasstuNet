@@ -12,6 +12,7 @@ type NetworkState = {
   ip: string
   mac: string
   signal: string
+  provider: string
   account: string
   lastChecked: string
   networks: string[]
@@ -30,7 +31,7 @@ type NetworkState = {
 type AboutInfo = { version: string; sha256: string; project: string; issues: string }
 type UpdateInfo = { status: string; version: string; name: string; notes: string; url: string; publishedAt: string; assetUrl: string }
 
-const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园网络', ssid: '', interface: '', ip: '', mac: '', signal: '', account: '', lastChecked: '', networks: [], bytesIn4: 0, bytesOut4: 0, onlineCount: 0, terminals: [], authCode: '', authMessage: '', dialCode: '', dialMessage: '', downloadRate: 0, uploadRate: 0 })
+const state = ref<NetworkState>({ status: 'idle', message: '等待附近校园网络', ssid: '', interface: '', ip: '', mac: '', signal: '', provider: '', account: '', lastChecked: '', networks: [], bytesIn4: 0, bytesOut4: 0, onlineCount: 0, terminals: [], authCode: '', authMessage: '', dialCode: '', dialMessage: '', downloadRate: 0, uploadRate: 0 })
 const form = ref({ username: '', password: '', role: 'student', isp: 'cucc', remember: true, autoLogin: false, autoStart: false, exitBehavior: 'tray', skipExitPrompt: false })
 const busy = ref(false)
 const autoLoginPending = ref(false)
@@ -66,6 +67,7 @@ function normalizeState(next: Partial<NetworkState> | null | undefined): Network
     ip: value.ip || '',
     mac: value.mac || '',
     signal: value.signal || '',
+    provider: value.provider || '',
     account: value.account || '',
     lastChecked: value.lastChecked || '',
     networks: Array.isArray(value.networks) ? value.networks.filter(Boolean) : [],
@@ -117,7 +119,7 @@ async function connect() {
   busy.value = true
   error.value = ''
   try {
-    await Login(form.value.username.trim(), form.value.password, form.value.role, form.value.isp, form.value.remember)
+    await Login(form.value.username.trim(), form.value.password, form.value.role, form.value.remember)
     view.value = 'status'
   } catch (reason) {
     error.value = String(reason).replace(/^Error:\s*/, '')
@@ -239,7 +241,6 @@ async function installUpdate() {
         <form @submit.prevent="connect">
           <label><span>校园网账号</span><input v-model="form.username" autocomplete="username" placeholder="请输入账号" /></label>
           <label><span>密码</span><div class="password-input"><input v-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码" /><button type="button" :title="showPassword ? '隐藏密码' : '显示密码'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="16" /><Eye v-else :size="16" /></button></div></label>
-          <label><span>运营商</span><select v-model="form.isp"><option value="cucc">中国联通</option><option value="cmcc">中国移动</option><option value="telecom">中国电信</option></select></label>
           <div class="preferences">
             <label class="check-row"><input v-model="form.remember" type="checkbox" @change="savePreferences" /><span><Check :size="11" /></span>保存密码</label>
             <label class="check-row"><input v-model="form.autoLogin" type="checkbox" @change="savePreferences" /><span><Check :size="11" /></span>自动登录</label>
@@ -257,8 +258,8 @@ async function installUpdate() {
         <div class="status-heading"><div><span class="section-label">{{ view === 'traffic' ? '流量概览' : '连接状态' }}</span><h1>{{ view === 'traffic' ? '网络流量' : '校园网络' }}</h1></div><button class="secondary-button" @click="refresh"><RefreshCw :size="15" />刷新</button></div>
         <template v-if="view === 'traffic'"><section class="traffic-summary"><div class="traffic-total"><span>网络速度</span><strong>↑ {{ formatRate(state.uploadRate) }}　↓ {{ formatRate(state.downloadRate) }}</strong></div><div class="traffic-line-chart"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline :points="chartPoints" /></svg></div><div class="traffic-counters"><span>下行总量 <strong>{{ formatBytes(state.bytesIn4) }}</strong></span><span>上行总量 <strong>{{ formatBytes(state.bytesOut4) }}</strong></span></div></section><section class="details traffic-details"><h3>在线信息</h3><dl><div><dt>在线设备</dt><dd>{{ state.onlineCount || 0 }}</dd></div><div><dt>物理地址</dt><dd>{{ state.mac || '—' }}</dd></div><div><dt>认证状态</dt><dd>{{ state.authCode || '—' }}</dd></div><div><dt>拨号状态</dt><dd>{{ state.dialCode || '—' }}</dd></div><div><dt>认证提示</dt><dd>{{ state.authMessage || state.message || '—' }}</dd></div><div><dt>终端列表</dt><dd>{{ state.terminals.length ? state.terminals.join('、') : '—' }}</dd></div></dl></section></template>
         <template v-else>
-        <div class="connection-status"><div class="connected-icon"><Wifi :size="34" /></div><div><span class="connected-label"><i></i>连接正常</span><h2>{{ state.ssid }}</h2><p>{{ state.message }}</p></div><button class="danger-button" :disabled="busy" @click="disconnect"><LogOut :size="15" />断开连接</button></div>
-        <section class="details"><h3>网络信息</h3><dl><div><dt>认证账号</dt><dd>{{ state.account || '—' }}</dd></div><div><dt>无线网络</dt><dd>{{ state.ssid || '—' }}</dd></div><div><dt>IPv4 地址</dt><dd>{{ state.ip || '—' }}</dd></div><div><dt>网络接口</dt><dd>{{ state.interface || '—' }}</dd></div><div><dt>物理地址</dt><dd>{{ state.mac || '—' }}</dd></div><div><dt>信号强度</dt><dd>{{ state.signal || '—' }}</dd></div></dl></section>
+        <div class="connection-status"><div class="connected-icon"><Wifi :size="34" /></div><div><span class="connected-label"><i></i>{{ state.provider ? '已连接' + state.provider : '连接正常' }}</span><h2>{{ state.ssid }}</h2><p>{{ state.message }}</p></div><button class="danger-button" :disabled="busy" @click="disconnect"><LogOut :size="15" />断开连接</button></div>
+        <section class="details"><h3>网络信息</h3><dl><div><dt>认证账号</dt><dd>{{ state.account || '—' }}</dd></div><div><dt>运营商</dt><dd>{{ state.provider || '—' }}</dd></div><div><dt>无线网络</dt><dd>{{ state.ssid || '—' }}</dd></div><div><dt>IPv4 地址</dt><dd>{{ state.ip || '—' }}</dd></div><div><dt>网络接口</dt><dd>{{ state.interface || '—' }}</dd></div><div><dt>物理地址</dt><dd>{{ state.mac || '—' }}</dd></div><div><dt>信号强度</dt><dd>{{ state.signal || '—' }}</dd></div></dl></section>
         <footer class="status-footer"><span><i></i>后台状态检查已启用</span><span>上次检查 {{ state.lastChecked || '刚刚' }}</span></footer></template>
       </section>
     </section>

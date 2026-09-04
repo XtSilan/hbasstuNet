@@ -59,6 +59,7 @@ export namespace main {
 	    ip: string;
 	    mac: string;
 	    signal: string;
+	    provider: string;
 	    account: string;
 	    lastChecked: string;
 	    networks: string[];
@@ -86,6 +87,7 @@ export namespace main {
 	        this.ip = source["ip"];
 	        this.mac = source["mac"];
 	        this.signal = source["signal"];
+	        this.provider = source["provider"];
 	        this.account = source["account"];
 	        this.lastChecked = source["lastChecked"];
 	        this.networks = source["networks"];

@@ -13,7 +13,7 @@ export function ExitApp(arg1:boolean):Promise<void>;
 
 export function InstallUpdate(arg1:string):Promise<void>;
 
-export function Login(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
+export function Login(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
 
 export function Logout():Promise<void>;
 

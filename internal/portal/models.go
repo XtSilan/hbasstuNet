@@ -14,6 +14,7 @@ type Response struct {
 	DialCode    string  `json:"dialCode"`
 	DialMessage string  `json:"dialMsg"`
 	EnableDial  bool    `json:"enableDial"`
+	ISP         string  `json:"isp"`
 	Online      *Online `json:"online"`
 }
 

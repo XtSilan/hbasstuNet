@@ -49,6 +49,7 @@ type AppState struct {
 	IP           string   `json:"ip"`
 	MAC          string   `json:"mac"`
 	Signal       string   `json:"signal"`
+	Provider     string   `json:"provider"`
 	Account      string   `json:"account"`
 	LastChecked  string   `json:"lastChecked"`
 	Networks     []string `json:"networks"`
@@ -233,7 +234,7 @@ func (a *App) initialize() {
 	settings := a.settings
 	a.mu.Unlock()
 	if settings.AutoLogin && settings.Username != "" && settings.Password != "" {
-		if err := a.Login(settings.Username, settings.Password, settings.Role, settings.ISP, settings.Remember); err != nil {
+		if err := a.Login(settings.Username, settings.Password, settings.Role, settings.Remember); err != nil {
 			log.Printf("background automatic login failed: %v", err)
 		}
 	}
@@ -279,8 +280,8 @@ func (a *App) SaveSettings(settings config.Settings) error {
 	return nil
 }
 
-func (a *App) Login(username, password, role, isp string, remember bool) error {
-	log.Printf("login requested; role=%s isp=%s remember=%t", role, isp, remember)
+func (a *App) Login(username, password, role string, remember bool) error {
+	log.Printf("login requested; role=%s remember=%t", role, remember)
 	if username == "" || password == "" {
 		return fmt.Errorf("请输入账号和密码")
 	}
@@ -305,11 +306,14 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 	if err != nil {
 		return err
 	}
-	creds := portal.Credentials{Username: username, Password: password, IPv4: info.IP, MAC: info.MAC, ISP: isp}
+	creds := portal.Credentials{Username: username, Password: password, IPv4: info.IP, MAC: info.MAC}
 	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
 	defer cancel()
 	status, statusErr := client.Status(ctx, creds)
-	if statusErr == nil && status.Code == 0 {
+	if statusErr == nil && status.ISP != "" {
+		creds.ISP = status.ISP
+	}
+	if statusErr == nil && responseAuthenticated(status) && responseAccountMatches(status, username) {
 		account := username
 		if status.Online != nil && status.Online.Username != "" {
 			account = status.Online.Username
@@ -317,31 +321,48 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 		a.setConnected(client, info, account, networks, status)
 		return nil
 	}
+	if statusErr == nil && status.Online != nil && status.Online.Username != "" && !responseAccountMatches(status, username) {
+		oldCredentials := creds
+		if status.Online != nil && status.Online.Username != "" {
+			oldCredentials.Username = status.Online.Username
+		}
+		if status.ISP != "" {
+			oldCredentials.ISP = status.ISP
+		}
+		cleanupCtx, cleanupCancel := context.WithTimeout(a.ctx, 10*time.Second)
+		if _, logoutErr := client.Logout(cleanupCtx, oldCredentials); logoutErr != nil {
+			log.Printf("previous portal session cleanup failed: %v", logoutErr)
+		}
+		cleanupCancel()
+	}
 	check, err := client.Check(ctx, creds)
 	if err != nil {
-		a.fail(err)
+		a.failLogin(err, client, info, creds, networks)
 		return err
 	}
 	if check.Code != 0 {
-		err = fmt.Errorf("账号检查失败：%s", check.Message)
-		a.fail(err)
+		err = responseError("账号检查失败", check)
+		a.failLogin(err, client, info, creds, networks)
 		return err
 	}
 	response, err := client.Login(ctx, creds)
 	if err != nil {
-		a.fail(err)
+		a.failLogin(err, client, info, creds, networks)
 		return err
 	}
-	if response.Code != 0 {
-		err = fmt.Errorf("登录失败：%s", response.Message)
-		a.fail(err)
+	if !responseAuthenticated(response) {
+		err = responseError("登录失败", response)
+		a.failLogin(err, client, info, creds, networks)
 		return err
 	}
 	log.Printf("portal login succeeded; ssid=%s ip=%s account=%s", info.SSID, info.IP, mask(username))
 	a.mu.Lock()
 	settings := a.settings
 	a.mu.Unlock()
-	settings.Username, settings.Password, settings.Role, settings.ISP, settings.Remember = username, password, role, isp, remember
+	settings.Username, settings.Password, settings.Role, settings.Remember = username, password, role, remember
+	if response.ISP != "" {
+		settings.ISP = response.ISP
+	}
 	if err := a.SaveSettings(settings); err != nil {
 		return err
 	}
@@ -349,13 +370,73 @@ func (a *App) Login(username, password, role, isp string, remember bool) error {
 	return nil
 }
 
+func responseAuthenticated(response portal.Response) bool {
+	if response.Code != 0 || response.Online == nil {
+		return false
+	}
+	if code := strings.ToUpper(strings.TrimSpace(response.AuthCode)); code != "" && !strings.HasPrefix(code, "OK:") {
+		return false
+	}
+	if code := strings.ToUpper(strings.TrimSpace(response.DialCode)); strings.HasPrefix(code, "E") {
+		return false
+	}
+	return true
+}
+
+func responseAccountMatches(response portal.Response, username string) bool {
+	if response.Online == nil || strings.TrimSpace(response.Online.Username) == "" {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(response.Online.Username), strings.TrimSpace(username))
+}
+
+func responseError(prefix string, response portal.Response) error {
+	message := strings.TrimSpace(response.DialMessage)
+	if message == "" {
+		message = strings.TrimSpace(response.AuthMessage)
+	}
+	if message == "" {
+		message = strings.TrimSpace(response.Message)
+	}
+	if message == "" {
+		message = strings.TrimSpace(response.DialCode)
+	}
+	if message == "" {
+		message = "校园网认证未成功"
+	}
+	return fmt.Errorf("%s：%s", prefix, message)
+}
+
+func providerName(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "telecom", "ctcc", "电信":
+		return "中国电信"
+	case "cucc", "unicom", "联通":
+		return "中国联通"
+	case "cmcc", "mobile", "移动":
+		return "中国移动"
+	case "local", "校园网":
+		return "校园网"
+	default:
+		return strings.TrimSpace(value)
+	}
+}
+
 func (a *App) setConnected(client *portal.Client, info network.Info, username string, networks []string, response portal.Response) {
 	a.mu.Lock()
 	wasConnected := a.state.Status == "connected"
 	a.client, a.info = client, info
 	a.sessionActive = true
+	if response.ISP != "" {
+		a.settings.ISP = response.ISP
+	}
 	a.mu.Unlock()
-	state := AppState{Status: "connected", Message: "已连接校园网", SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal, Account: username, Networks: networks, LastChecked: time.Now().Format("15:04:05"), AuthCode: response.AuthCode, AuthMessage: response.AuthMessage, DialCode: response.DialCode, DialMessage: response.DialMessage}
+	provider := providerName(response.ISP)
+	message := "已连接校园网"
+	if provider != "" {
+		message = "已连接" + provider
+	}
+	state := AppState{Status: "connected", Message: message, SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal, Provider: provider, Account: username, Networks: networks, LastChecked: time.Now().Format("15:04:05"), AuthCode: response.AuthCode, AuthMessage: response.AuthMessage, DialCode: response.DialCode, DialMessage: response.DialMessage}
 	if response.Online != nil {
 		state.BytesIn4, state.BytesOut4, state.OnlineCount = response.Online.BytesIn4, response.Online.BytesOut4, 1
 		state.Terminals = []string{response.Online.UserMAC + " · " + response.Online.UserIPv4}
@@ -394,6 +475,30 @@ func (a *App) Logout() error {
 	return err
 }
 
+// failLogin logs out the portal session created during this login attempt and
+// clears local session state before returning the authentication error. The
+// portal identifies the session by client IPv4/MAC, so this also cleans up a
+// partially authenticated account when credentials are rejected.
+func (a *App) failLogin(err error, client *portal.Client, info network.Info, credentials portal.Credentials, networks []string) {
+	if client != nil {
+		base := a.ctx
+		if base == nil {
+			base = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(base, 10*time.Second)
+		if _, logoutErr := client.Logout(ctx, credentials); logoutErr != nil {
+			log.Printf("cleanup portal session failed: %v", logoutErr)
+		}
+		cancel()
+	}
+	a.mu.Lock()
+	a.client = nil
+	a.sessionActive = false
+	a.mu.Unlock()
+	log.Printf("login failed; portal session cleared: %v", err)
+	a.setState(AppState{Status: "error", Message: err.Error(), SSID: info.SSID, Interface: info.Interface, IP: info.IP, MAC: info.MAC, Signal: info.Signal, Networks: networks})
+}
+
 func (a *App) Refresh() AppState { a.refresh(); return a.State() }
 
 func (a *App) refresh() {
@@ -423,7 +528,7 @@ func (a *App) refresh() {
 			ctx, cancel := context.WithTimeout(a.ctx, 8*time.Second)
 			response, statusErr := client.Status(ctx, portal.Credentials{Username: settings.Username, Password: settings.Password, IPv4: info.IP, MAC: info.MAC, ISP: settings.ISP})
 			cancel()
-			if statusErr == nil && response.Code == 0 {
+			if statusErr == nil && responseAuthenticated(response) {
 				account := settings.Username
 				if response.Online != nil && response.Online.Username != "" {
 					account = response.Online.Username
@@ -455,7 +560,7 @@ func (a *App) monitor() {
 			// AutoLogin controls startup behaviour; once a campus Wi-Fi is present,
 			// a lost portal session is restored automatically when credentials exist.
 			if sessionActive && settings.Username != "" && settings.Password != "" && state.Status == "offline" && strings.Contains(state.Message, "等待认证") {
-				if err := a.Login(settings.Username, settings.Password, settings.Role, settings.ISP, settings.Remember); err != nil {
+				if err := a.Login(settings.Username, settings.Password, settings.Role, settings.Remember); err != nil {
 					log.Printf("automatic re-authentication failed: %v", err)
 				}
 			}
